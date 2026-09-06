@@ -1,0 +1,44 @@
+# =============================================================================
+# junjiezuo 独立测试栈 override —— 让 631change 与生产 631/ 栈共存于同一 Docker daemon
+#
+# 背景：631change/docker-compose.yml 与生产 631/docker-compose.yml 在三个层面共享
+#   (1) 项目名 name: faultdiag-integrated
+#   (2) 宿主端口 5000 / 8080（生产栈现已占用）
+#   (3) 自定义镜像 tag faultdiag-*:latest（重建会覆盖生产栈正在使用的镜像）
+#
+# 本 override 把三者全部隔离，使两套栈互不干预：
+#   - 项目名 → jj-test（compose name 顶层优先级最高，压过 -p/-f 推测）
+#   - 主系统后端 5000→5001，主系统前端 8080→8081
+#   - 5 个自定义镜像 tag 全部改为 jjtest-*，postgres 沿用官方镜像（只读共用安全）
+#   - training-worker 不在此列：bridge 测试不需要，且其 GPU device-1 与生产栈冲突
+#
+# 启动方式（务必同时加载本 override，否则会覆盖生产栈）：
+#   cd 631_9.7
+#   docker compose -f docker-compose.yml -f docker-compose.override-jj.yml \
+#     up -d --build postgres backend frontend-main backend-annotate frontend-annotate
+#
+# 访问：
+#   http://localhost:8081                   主系统首页
+#   http://localhost:5001/api/docs          主系统 Swagger
+#   http://localhost:8081/annotate-api/v1/health  标注子系统健康（同源）
+# =============================================================================
+name: jj-test
+
+services:
+  # 自定义镜像 tag 全部隔离（postgres 官方镜像只读共用，安全）。
+  # 单一数据库（方案 3）：postgres 为唯一实例，主/标注子系统共用 fault_diagnosis，
+  # 因此不再有 postgres-annotate 服务；backend-annotate 在 base 中直接指向 postgres。
+  postgres:
+    image: postgres:16
+  backend:
+    image: jjtest-backend:latest
+    ports:
+      - "5001:8000"
+  frontend-main:
+    image: jjtest-frontend:integrated
+    ports:
+      - "8081:80"
+  backend-annotate:
+    image: jjtest-backend-annotate:latest
+  frontend-annotate:
+    image: jjtest-frontend-annotate:latest

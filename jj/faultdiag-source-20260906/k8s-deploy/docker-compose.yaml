@@ -1,0 +1,145 @@
+# =============================================================================
+# 故障定位主系统 + 日志标注子系统 集成系统 —— 生产部署 compose（image-only，无 build context）
+# 版本：631change（2026-08；6 镜像精简包，不含 training-worker 训练镜像）
+# 适用于：目标机只装 Docker + compose v2。需要训练能力时另行构建/加载训练镜像后手动追加服务。
+#
+# 一键部署：
+#   1) 本目录放到目标机；images-integrated.tar.gz（分片 *.part）也放同目录
+#   2) sh load-images.sh
+#   3) cp -n .env.example .env  并按需修改（DB 密码 / LLM / 网关 token）
+#   4) docker compose up -d
+# 入口：
+#   主页 http://<host>:8080 ；主后端 Swagger http://<host>:5000/api/docs
+# =============================================================================
+name: faultdiag-integrated
+
+services:
+  # ─── 主系统数据库 ────────────────────────────────────────────────────────────
+  postgres:
+    image: faultdiag-postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fault_diagnosis}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [faultdiag]
+
+  # ─── 主系统后端 ──────────────────────────────────────────────────────────────
+  backend:
+    image: faultdiag-backend:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+      MONGO_DB: ${POSTGRES_DB:-fault_diagnosis}
+      ENABLE_EMBEDDING: "True"
+      LOCAL_MODEL_PATH: "/models/bge-small-zh-v1.5"
+      EMBEDDING_DEVICE: "cpu"
+      AUTO_INGEST: "1"
+      # ── LLM (OpenAI 兼容协议；DashScope / DeepSeek / 内网 vLLM 均可)
+      ENABLE_LLM: ${ENABLE_LLM:-False}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-1024}
+      # ── 模型 API 凭据加密（Fernet）
+      MODEL_API_ENCRYPTION_KEY: ${MODEL_API_ENCRYPTION_KEY:-}
+      # ── 跨系统导入桥
+      ANNOTATE_BACKEND_URL: ${ANNOTATE_BACKEND_URL:-http://backend-annotate:8000/api/v1}
+      NO_PROXY: ${NO_PROXY:-backend-annotate,localhost,127.0.0.1}
+      no_proxy: ${NO_PROXY:-backend-annotate,localhost,127.0.0.1}
+    volumes:
+      # 持久化 /app/outputs：Chroma 向量库 + KG
+      - backend_outputs:/app/outputs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:8000"
+    networks: [faultdiag]
+
+  # ─── 主系统前端（整个集成的 nginx 入口） ────────────────────────────────────
+  frontend-main:
+    image: faultdiag-frontend:integrated
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend-annotate
+      - backend-annotate
+    ports:
+      - "8080:80"
+    networks: [faultdiag]
+
+  # ─── 标注子系统数据库 ───────────────────────────────────────────────────────
+  postgres-annotate:
+    image: faultdiag-postgres-annotate:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ANNOTATE_DB:-data_bj}
+      POSTGRES_USER: ${ANNOTATE_USER:-data_bj}
+      POSTGRES_PASSWORD: ${ANNOTATE_PASSWORD:-data_bj}
+    volumes:
+      - pgdata_annotate:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ANNOTATE_USER:-data_bj} -d ${ANNOTATE_DB:-data_bj}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [faultdiag]
+
+  # ─── 标注子系统后端 ──────────────────────────────────────────────────────────
+  backend-annotate:
+    image: faultdiag-backend-annotate:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://${ANNOTATE_USER:-data_bj}:${ANNOTATE_PASSWORD:-data_bj}@postgres-annotate:5432/${ANNOTATE_DB:-data_bj}
+      STORAGE_ROOT: /data/storage
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT:-60}
+      # ── LLM 网关：标注后端经此访问主后端大模型能力，token 两端必须同值 ──
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL:-http://backend:8000/api/v1/internal/llm/chat}
+      LLM_GATEWAY_TIMEOUT_SECONDS: ${LLM_GATEWAY_TIMEOUT_SECONDS:-180}
+      INTERNAL_LLM_GATEWAY_TOKEN: ${INTERNAL_LLM_GATEWAY_TOKEN:-}
+      MAIN_SYSTEM_BACKEND_URL: ${MAIN_SYSTEM_BACKEND_URL:-http://backend:8000/api/v1}
+      NO_PROXY: ${NO_PROXY:-backend,localhost,127.0.0.1}
+      no_proxy: ${NO_PROXY:-backend,localhost,127.0.0.1}
+    volumes:
+      - annotate_storage:/data/storage
+    depends_on:
+      postgres-annotate:
+        condition: service_healthy
+    networks: [faultdiag]
+
+  # ─── 标注子系统前端 ──────────────────────────────────────────────────────────
+  frontend-annotate:
+    image: faultdiag-frontend-annotate:latest
+    restart: unless-stopped
+    depends_on:
+      - backend-annotate
+    networks: [faultdiag]
+
+volumes:
+  pgdata:
+  pgdata_annotate:
+  annotate_storage:
+  backend_outputs:
+
+networks:
+  faultdiag:
+    driver: bridge

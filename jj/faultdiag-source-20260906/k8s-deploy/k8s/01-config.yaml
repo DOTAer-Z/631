@@ -1,0 +1,53 @@
+# 共用 ConfigMap（非敏感）+ 共用 Secret（敏感：DB 密码 / LLM Key / 模型API加密Key）。
+# 主系统与标注子系统都从这里取部分 env。
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: faultdiag-config
+  namespace: faultdiag-integrated
+data:
+  # 主系统 DB 名（与下面 Secret 配合）
+  POSTGRES_DB: fault_diagnosis
+
+  # 标注子系统 DB 名 / 用户（密码在 Secret）
+  ANNOTATE_DB: data_bj
+  ANNOTATE_USER: data_bj
+
+  # 标注子系统其它
+  APP_ENV: production
+  LOG_LEVEL: INFO
+  MAX_UPLOAD_BYTES: "1073741824"
+
+  # ── LLM 总开关（True/False；空字符串都视为关闭）
+  ENABLE_LLM: "False"
+  # ── LLM endpoint（OpenAI 兼容；DashScope / DeepSeek / 内网 vLLM 均可，留空即降级）
+  LLM_BASE_URL: ""
+  LLM_MODEL: ""
+  LLM_TIMEOUT: "60"
+  LLM_MAX_OUTPUT_TOKENS: "1024"
+  LOG_PARSE_TIMEOUT_SECONDS: "60"
+  LOG_PARSE_WORKERS: "1"
+  LLM_GATEWAY_URL: "http://backend:8000/api/v1/internal/llm/chat"
+  LLM_GATEWAY_TIMEOUT_SECONDS: "180"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: faultdiag-secret
+  namespace: faultdiag-integrated
+type: Opaque
+stringData:
+  # 主系统 DB
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: "secret"           # 正式环境改强密码
+  # 标注子系统 DB 密码
+  ANNOTATE_PASSWORD: "data_bj"          # 同上
+  # LLM API Key（启用 LLM 时必填，留空即静默降级）
+  LLM_API_KEY: ""
+  # Generate before deployment: openssl rand -hex 32
+  INTERNAL_LLM_GATEWAY_TOKEN: ""
+  # ── 模型 API 凭据加密（Fernet key，新增）。用「模型 API 管理」保存/读取加密凭据时必填；
+  #    留空时核心与训练都能跑，仅该功能报错。一旦库里存过加密行就【不要】再改此值，否则解不开。
+  #    生成：python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  MODEL_API_ENCRYPTION_KEY: ""

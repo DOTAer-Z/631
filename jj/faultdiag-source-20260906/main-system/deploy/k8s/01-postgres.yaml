@@ -1,0 +1,71 @@
+# PostgreSQL：Secret（密码）+ PVC（持久化）+ Deployment + Service
+apiVersion: v1
+kind: Secret
+metadata:
+  name: faultdiag-db
+  namespace: faultdiagnosis
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: "secret"          # 正式环境改强密码
+  POSTGRES_DB: fault_diagnosis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faultdiag-pgdata
+  namespace: faultdiagnosis
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard   # 如集群无默认 StorageClass，取消注释并填你的 SC 名
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: faultdiagnosis
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          envFrom:
+            - secretRef: { name: faultdiag-db }
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata   # 子目录，避开卷根的 lost+found
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U postgres -d fault_diagnosis"] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: faultdiag-pgdata
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: faultdiagnosis
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432

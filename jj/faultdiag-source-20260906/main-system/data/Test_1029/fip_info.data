@@ -1,0 +1,5 @@
+FAULT_TYPE: PRIORITY_INVERSION_IO_LOCK
+TARGET_COMPONENT: nuttx/telemetry_task
+TARGET_CLASS: none
+TARGET_FUNCTION_DEF: src/comms/telemetry_task.c+161; 1
+FAULT_POINT: nuttx_priority_inversion_io_lock_p2w_a_r009

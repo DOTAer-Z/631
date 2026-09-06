@@ -1,0 +1,33 @@
+# Docker 构建上下文忽略（后端镜像以仓库根为上下文）
+# 关键：排除巨大的本地 venv 与各种本地产物，保留 data/ 以便烤进镜像。
+
+# Python 本地虚拟环境 / 缓存
+backend/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# 本地运行配置（含端口/密码），镜像内通过 compose env 注入
+backend/run.env
+
+# 前端构建产物与依赖（前端镜像单独构建）
+frontend/node_modules
+frontend/dist
+
+# 版本库 / 编辑器 / 文档 / 后台任务输出
+.git
+.gitignore
+.vscode
+.idea
+*.output
+*.docx
+*.lnk
+
+# Windows 资源标记
+**/*Zone.Identifier
+
+# 分发产物（避免老镜像 tar 进入构建上下文）
+dist/*.tar
+dist-*/
+

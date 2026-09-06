@@ -1,0 +1,104 @@
+# 标注子系统后端：Deployment + Service
+# Service 名固定为 backend-annotate（主前端 nginx 反代到 http://backend-annotate:8000）
+# 入口脚本会自动 alembic upgrade head
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faultdiag-backend-annotate
+  namespace: faultdiag-integrated
+spec:
+  replicas: 1                      # alembic 迁移需要互斥，先保持单副本
+  selector:
+    matchLabels: { app: faultdiag-backend-annotate }
+  template:
+    metadata:
+      labels: { app: faultdiag-backend-annotate }
+    spec:
+      containers:
+        - name: backend-annotate
+          image: REGISTRY_PLACEHOLDER/faultdiag-backend-annotate:latest   # ← 用 sed 替换
+          imagePullPolicy: IfNotPresent
+          env:
+            # 标注后端只认 DATABASE_URL，不读分散字段
+            - name: ANNOTATE_USER
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: ANNOTATE_USER } }
+            - name: ANNOTATE_PASSWORD
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: ANNOTATE_PASSWORD } }
+            - name: ANNOTATE_DB
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: ANNOTATE_DB } }
+            - name: DATABASE_URL
+              value: postgresql+psycopg://$(ANNOTATE_USER):$(ANNOTATE_PASSWORD)@postgres-annotate:5432/$(ANNOTATE_DB)
+            - name: APP_ENV
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: APP_ENV } }
+            - name: LOG_LEVEL
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LOG_LEVEL } }
+            - name: STORAGE_ROOT
+              value: /data/storage
+            - name: MAX_UPLOAD_BYTES
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: MAX_UPLOAD_BYTES } }
+            # ── LLM ──
+            - name: LLM_GATEWAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: faultdiag-config
+                  key: LLM_GATEWAY_URL
+            - name: LLM_GATEWAY_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: faultdiag-config
+                  key: LLM_GATEWAY_TIMEOUT_SECONDS
+            - name: INTERNAL_LLM_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: faultdiag-secret
+                  key: INTERNAL_LLM_GATEWAY_TOKEN
+            # ── 跨系统导入桥（本轮新增）：「从主系统导入」直连主后端拉 DB1 运行记录 ──
+            - name: MAIN_SYSTEM_BACKEND_URL
+              value: http://backend:8000/api/v1
+            # 内部服务调用绕过可能注入的集群/系统代理，避免走死代理超时
+            - name: NO_PROXY
+              value: backend,localhost,127.0.0.1
+            - name: no_proxy
+              value: backend,localhost,127.0.0.1
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: storage
+              mountPath: /data/storage
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: faultdiag-annotate-storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faultdiag-annotate-storage
+  namespace: faultdiag-integrated
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-annotate
+  namespace: faultdiag-integrated
+spec:
+  selector: { app: faultdiag-backend-annotate }
+  ports:
+    - port: 8000
+      targetPort: 8000
