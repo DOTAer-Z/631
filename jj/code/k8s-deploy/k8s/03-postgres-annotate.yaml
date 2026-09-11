@@ -1,0 +1,67 @@
+# 标注子系统 PostgreSQL：与主系统 postgres 物理分离的独立库
+# Service 名 postgres-annotate（backend-annotate 的 DATABASE_URL 指向它）
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faultdiag-pgdata-annotate
+  namespace: faultdiag-integrated
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-annotate
+  namespace: faultdiag-integrated
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-annotate }
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: { app: postgres-annotate }
+    spec:
+      containers:
+        - name: postgres-annotate
+          image: REGISTRY_PLACEHOLDER/faultdiag-postgres-annotate:16-alpine   # ← 用 sed 替换
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: ANNOTATE_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: ANNOTATE_PASSWORD } }
+            - name: POSTGRES_DB
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: ANNOTATE_DB } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U data_bj -d data_bj"] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: faultdiag-pgdata-annotate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-annotate
+  namespace: faultdiag-integrated
+spec:
+  selector: { app: postgres-annotate }
+  ports:
+    - port: 5432
+      targetPort: 5432

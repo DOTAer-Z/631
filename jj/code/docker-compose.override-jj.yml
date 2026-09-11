@@ -1,0 +1,64 @@
+# =============================================================================
+# junjiezuo 631_9.9 独立测试栈 override —— 与生产 631/ 栈及旧 jj-test 栈完全隔离
+#
+# 隔离(layer 1)：
+#   - 项目名 → jj99（compose name 顶层优先级最高，压过 -p/-f 推测）
+#   - 主系统后端 5001，主系统前端 8081（此栈专用端口）
+#   - 5 个自定义镜像 tag 全部改为 jjtest9-*（不污染旧 jjtest-* / 生产 faultdiag-*）
+#   - postgres 沿用官方镜像，但独立卷（不共享旧栈数据）
+#
+# 启动方式（务必同时加载本 override）：
+#   cd 631_9.9
+#   docker compose -f docker-compose.yml -f docker-compose.override-jj.yml \
+#     up -d --build postgres backend frontend-main backend-annotate frontend-annotate
+#
+# 访问：
+#   http://localhost:8081                   主系统首页
+#   http://localhost:5001/api/docs          主系统 Swagger
+#   http://localhost:8081/annotate-api/v1/health  标注子系统健康（同源）
+# =============================================================================
+name: jj99
+
+services:
+  postgres:
+    image: postgres:16
+  backend:
+    image: jjtest9-backend:latest
+    ports:
+      - "5001:8000"
+  frontend-main:
+    image: jjtest9-frontend:integrated
+    ports:
+      - "8081:80"
+  backend-annotate:
+    image: jjtest9-backend-annotate:latest
+  frontend-annotate:
+    image: jjtest9-frontend-annotate:latest
+  # 训练 worker：演示用 CPU 跑通流程，允许缺失基座模型（网页端任选路径）。
+  # 用独立 worker 镜像(jjtest9-training-worker，由 Dockerfile.training.jj99 构建)，
+  # 覆盖 base 的 GPU/NVIDIA 配置，避免与生产栈抢 GPU。
+  training-worker:
+    image: jjtest9-training-worker:latest
+    command: ["python", "-m", "app.training_worker.main"]
+    environment:
+      TRAINING_DEVICE: cpu
+      TRAINING_ALLOW_MISSING_MODEL: "true"
+      # 演示环境放宽资源预检（宿主盘 99% 占用，默认 20G/24G 阈值会直接 failed）
+      TRAINING_MIN_FREE_DISK_GB: "5"
+      # 内存预检读的是 SC_AVPHYS_PAGES(free)，不是 available；本机 free 仅 ~2G
+      TRAINING_MIN_FREE_CPU_GB: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+      TRAINING_OUTPUT_ROOT: /training/outputs
+      # 演示占位基座模型（仅含 config.json）；网页端「模型路径」填写的值会覆盖它。
+      TRAINING_BASE_MODEL_PATH: ${TRAINING_BASE_MODEL_PATH:-/models/demo}
+    volumes:
+      - training_outputs:/training/outputs
+      - ./demo-model:/models/demo:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # 不申请 GPU：演示 CPU 训练

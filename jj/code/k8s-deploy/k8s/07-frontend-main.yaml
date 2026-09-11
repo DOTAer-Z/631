@@ -1,0 +1,39 @@
+# 主前端（同时是整套集成的 nginx 入口，反代 /api、/annotate、/annotate-api）：
+# Deployment + Service（NodePort 对外暴露 UI）
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faultdiag-frontend-main
+  namespace: faultdiag-integrated
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: faultdiag-frontend-main }
+  template:
+    metadata:
+      labels: { app: faultdiag-frontend-main }
+    spec:
+      containers:
+        - name: frontend-main
+          image: REGISTRY_PLACEHOLDER/faultdiag-frontend:integrated   # ← 用 sed 替换
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faultdiag-frontend
+  namespace: faultdiag-integrated
+spec:
+  type: NodePort
+  selector: { app: faultdiag-frontend-main }
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080            # 访问 http://<任意节点IP>:30080/

@@ -1,0 +1,37 @@
+# 标注前端（容器内 nginx 托管 /annotate/ 静态资源）：Deployment + Service
+# Service 名固定为 frontend-annotate（主前端 nginx /annotate/ 反代到这里）
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faultdiag-frontend-annotate
+  namespace: faultdiag-integrated
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: faultdiag-frontend-annotate }
+  template:
+    metadata:
+      labels: { app: faultdiag-frontend-annotate }
+    spec:
+      containers:
+        - name: frontend-annotate
+          image: REGISTRY_PLACEHOLDER/faultdiag-frontend-annotate:latest   # ← 用 sed 替换
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /annotate/, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-annotate
+  namespace: faultdiag-integrated
+spec:
+  selector: { app: faultdiag-frontend-annotate }
+  ports:
+    - port: 80
+      targetPort: 80

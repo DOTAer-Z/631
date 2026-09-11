@@ -1,0 +1,118 @@
+# 主系统后端：PVC（向量库/KG 持久化）+ Deployment + Service
+# 入口脚本自动建表 / seed / alembic 升级 / 导入内置数据集；多副本请改用一次性 Job 初始化
+# -----------------------------------------------------------------------------
+# 持久化 /app/outputs：Chroma 向量库(sqlite+hnsw)、FAISS 索引、知识图谱 KG。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faultdiag-backend-outputs
+  namespace: faultdiag-integrated
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard   # 集群无默认 StorageClass 时取消注释并填实际 SC 名
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faultdiag-backend
+  namespace: faultdiag-integrated
+spec:
+  replicas: 1
+  # RWO 卷 backend-outputs 只能被一个 Pod 挂载；升级时必须先停旧再起新，故用 Recreate。
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: faultdiag-backend }
+  template:
+    metadata:
+      labels: { app: faultdiag-backend }
+    spec:
+      containers:
+        - name: backend
+          image: REGISTRY_PLACEHOLDER/faultdiag-backend:latest   # ← 用 sed 替换
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: POSTGRES_PASSWORD } }
+            - name: POSTGRES_DB
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: POSTGRES_DB } }
+            - name: MONGO_DB
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: POSTGRES_DB } }
+            - name: ENABLE_EMBEDDING
+              value: "True"
+            - name: LOCAL_MODEL_PATH
+              value: /models/bge-small-zh-v1.5
+            - name: EMBEDDING_DEVICE
+              value: cpu
+            - name: AUTO_INGEST
+              value: "1"
+            # ── LLM ──
+            - name: ENABLE_LLM
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: ENABLE_LLM } }
+            - name: LLM_BASE_URL
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LLM_BASE_URL } }
+            - name: LLM_MODEL
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LLM_MODEL } }
+            - name: LLM_TIMEOUT
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LLM_TIMEOUT } }
+            - name: LLM_MAX_OUTPUT_TOKENS
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LLM_MAX_OUTPUT_TOKENS } }
+            - name: LOG_PARSE_TIMEOUT_SECONDS
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LOG_PARSE_TIMEOUT_SECONDS } }
+            - name: LOG_PARSE_WORKERS
+              valueFrom: { configMapKeyRef: { name: faultdiag-config, key: LOG_PARSE_WORKERS } }
+            - name: LLM_API_KEY
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: LLM_API_KEY } }
+            - name: INTERNAL_LLM_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: faultdiag-secret
+                  key: INTERNAL_LLM_GATEWAY_TOKEN
+            # ── 模型 API 凭据加密（Fernet）──
+            - name: MODEL_API_ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: faultdiag-secret, key: MODEL_API_ENCRYPTION_KEY } }
+            # ── 跨系统导入桥：「从标注典型案例导入」直连标注后端拉 DB2 案例 ──
+            - name: ANNOTATE_BACKEND_URL
+              value: http://backend-annotate:8000/api/v1
+            - name: NO_PROXY
+              value: backend-annotate,localhost,127.0.0.1
+            - name: no_proxy
+              value: backend-annotate,localhost,127.0.0.1
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: outputs
+              mountPath: /app/outputs          # Chroma / FAISS / KG
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 60   # 首次启动会跑 ingest_dataset，可能慢
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 180
+            periodSeconds: 20
+      volumes:
+        - name: outputs
+          persistentVolumeClaim:
+            claimName: faultdiag-backend-outputs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend                    # 不能改名：前端 nginx proxy_pass http://backend:8000
+  namespace: faultdiag-integrated
+spec:
+  selector: { app: faultdiag-backend }
+  ports:
+    - port: 8000
+      targetPort: 8000

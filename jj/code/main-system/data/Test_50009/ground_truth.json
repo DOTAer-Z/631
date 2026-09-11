@@ -1,0 +1,66 @@
+{
+  "version": "v3",
+  "sample_class": "fault",
+  "fault_type": "TASK_DEADLOCK_MUTEX_AB",
+  "domain": "TASK",
+  "source_session_id": "nuttx_task_deadlock_mutex_ab_dataset2_m_20260527_r009",
+  "fault_point": "nuttx_task_deadlock_mutex_ab_dataset2_m_20260527_r009",
+  "root_cause_text": "任务 A 与任务 B 对共享互斥锁的获取顺序不一致，形成循环等待，最终导致死锁。",
+  "root_cause_mechanism": "lock_order_inversion_circular_wait",
+  "root_cause_evidence": [
+    {
+      "stage": "trigger",
+      "timestamp": "2026-01-01T00:00:01.100Z",
+      "module": "lockmgr",
+      "level": "WARN",
+      "message": "mutex acquisition stalled fault_family=task_scheduling severity=high phase=runtime stage=trigger wait_ms=180",
+      "component": "nuttx/lockmgr",
+      "function_def": "src/kernel/lockmgr.c+143; 1"
+    },
+    {
+      "stage": "propagation",
+      "timestamp": "2026-01-01T00:00:01.160Z",
+      "module": "mission_task",
+      "level": "ERROR",
+      "message": "task blocked on nav_mutex fault_family=task_scheduling severity=critical phase=runtime stage=propagation owner=logger_task",
+      "component": "nuttx/mission_task",
+      "function_def": "src/mission/mission_task.c+212; 1"
+    },
+    {
+      "stage": "impact",
+      "timestamp": "2026-01-01T00:00:01.210Z",
+      "module": "healthmon",
+      "level": "WARN",
+      "message": "scheduler no forward progress fault_family=task_scheduling severity=high phase=runtime stage=impact stalled_tasks=2",
+      "component": "nuttx/healthmon",
+      "function_def": "apps/system/healthmon/healthmon.c+188; 1"
+    },
+    {
+      "stage": "recovery",
+      "timestamp": "2026-01-01T00:00:04.700Z",
+      "module": "recovery_mgr",
+      "level": "WARN",
+      "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+    }
+  ],
+  "injection": {
+    "component": "nuttx/lockmgr",
+    "function_def": "src/kernel/lockmgr.c+143; 1"
+  },
+  "propagation": [
+    {
+      "component": "nuttx/mission_task",
+      "function_def": "src/mission/mission_task.c+212; 1"
+    }
+  ],
+  "impact": {
+    "component": "nuttx/healthmon",
+    "function_def": "apps/system/healthmon/healthmon.c+188; 1"
+  },
+  "recovery": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+  }
+}
