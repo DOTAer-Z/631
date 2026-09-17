@@ -1,0 +1,5 @@
+FAULT_TYPE: TASK_DEADLOCK_MUTEX_AB
+TARGET_COMPONENT: nuttx/mission_task
+TARGET_CLASS: none
+TARGET_FUNCTION_DEF: src/mission/mission_task.c+212; 1
+FAULT_POINT: nuttx_task_deadlock_mutex_ab_dataset2_m_20260527_r020

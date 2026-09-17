@@ -1,0 +1,221 @@
+# =============================================================================
+# 集成方案 A — 故障定位主系统 + 日志数据标注子系统（iframe 嵌入）
+# =============================================================================
+# 服务拓扑：
+#
+#   浏览器
+#     │ 8080 ─→ frontend-main (nginx)
+#     │              ├── /            → 主系统 SPA
+#     │              ├── /api/        → backend (faultdiag-backend:8000)
+#     │              ├── /annotate/   → frontend-annotate (nginx) 内部 /annotate/...
+#     │              └── /annotate-api/v1/  → backend-annotate:8000/api/v1/
+#     │
+#     │ 5000 ─→ backend (主系统 FastAPI；保留直接访问 Swagger)
+#
+# 数据库：
+#   - postgres  单一 Postgres 实例 + 单一逻辑库 (fault_diagnosis)，主系统与
+#               标注子系统共用（方案 3 深度融合）。
+#   标注子系统 11 张表以 ann_ 前缀命名空间隔离；唯一共享的 fault_types 表由
+#   主系统 create_all 创建/seed，标注子系统仅通过 FK 引用它。
+#   两侧 Alembic 版本表分离（alembic_version vs alembic_version_annotate）。
+#
+# 启动：
+#   cd /home/jj/631/integration-A
+#   docker compose up -d --build
+#
+# 访问：
+#   http://localhost:8080                 主系统首页
+#   http://localhost:8080/#/data-processing/preprocess
+#                                        「数据预处理」(iframe 嵌入标注子系统)
+#   http://localhost:8080/annotate/      直接访问标注子系统（调试用）
+#   http://localhost:5000/api/docs        主系统 Swagger
+#   http://localhost:8080/annotate-api/v1/health  标注子系统健康检查（同源走主前端）
+# =============================================================================
+name: faultdiag-integrated
+
+services:
+  # ─── 主系统数据库 ────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fault_diagnosis}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [faultdiag]
+
+  # ─── 主系统后端 ──────────────────────────────────────────────────────────
+  backend:
+    image: faultdiag-backend:latest
+    build:
+      context: ./main-system
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+      MONGO_DB: ${POSTGRES_DB:-fault_diagnosis}
+      ENABLE_EMBEDDING: "True"
+      LOCAL_MODEL_PATH: "/models/bge-small-zh-v1.5"
+      EMBEDDING_DEVICE: "cpu"
+      AUTO_INGEST: "1"
+      # ── LLM（OpenAI 兼容；DashScope / 本地 vLLM 都可）。
+      #    四项任何一项不满足都会自动降级，不影响其它接口。
+      ENABLE_LLM: ${ENABLE_LLM:-False}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-1024}
+      LOG_PARSE_TIMEOUT_SECONDS: ${LOG_PARSE_TIMEOUT_SECONDS:-60}
+      LOG_PARSE_WORKERS: ${LOG_PARSE_WORKERS:-1}
+      # 模型 API 管理页存的大模型凭据加密 key(Fernet)。留空时后端启动自动生成并持久化到
+      # /app/outputs(model_api_encryption_key),重启不变 —— 零-yaml,运营方无需填写。
+      MODEL_API_ENCRYPTION_KEY: ${MODEL_API_ENCRYPTION_KEY:-}
+      TRAINING_OUTPUT_ROOT: /training/outputs
+      # 「从标注典型案例导入」：主后端经 docker 网络直连标注后端拉取 DB2 案例。
+      ANNOTATE_BACKEND_URL: ${ANNOTATE_BACKEND_URL:-http://backend-annotate:8000/api/v1}
+      # 内部服务(backend-annotate 等)调用绕过可能注入的系统代理。
+      NO_PROXY: ${NO_PROXY:-backend-annotate,localhost,127.0.0.1}
+      no_proxy: ${NO_PROXY:-backend-annotate,localhost,127.0.0.1}
+    volumes:
+      # 持久化 /app/outputs：Chroma 向量库 + 知识图谱 KG，避免容器重建后知识库/图谱丢失。
+      - backend_outputs:/app/outputs
+      # 训练产物下载、公开日志和受保护删除与 Worker 共享同一持久卷。
+      - training_outputs:/training/outputs
+      # 数据导入压缩包原始文件（DATA_IMPORT_ROOT=/app/data/imports）——若不持久化，
+      # 容器重建/重启后上传的 zip 丢失，「摄入」会报 "stored archive missing on disk"。
+      - data_imports:/app/data/imports
+    # 主后端必须向 Docker 报告 healthy，backend-annotate 的
+    # depends_on: backend: condition: service_healthy 才会放行 —— 且此时
+    # create_tables.py/seed.py 已跑完，fault_types 已建好，标注子系统迁移才能引用它。
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5001:8000"
+    networks: [faultdiag]
+
+  # ─── 单卡 GPU 训练 Worker（不提供网络端口）──────────────────────────────
+  training-worker:
+    image: faultdiag-training-worker:latest
+    build:
+      context: ..
+      dockerfile: 631_9.7/main-system/backend/Dockerfile.training
+    command: ["python", "-m", "app.training_worker.main"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+      TRAINING_OUTPUT_ROOT: /training/outputs
+      TRAINING_BASE_MODEL_PATH: /models/Qwen3.5-9B
+      NVIDIA_VISIBLE_DEVICES: "1"
+      CUDA_VISIBLE_DEVICES: "0"
+    volumes:
+      - training_outputs:/training/outputs
+      - ${TRAINING_BASE_MODEL_HOST_PATH:-../models/Qwen3.5-9B}:/models/Qwen3.5-9B:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    networks: [faultdiag]
+
+  # ─── 主系统前端（同时是整个集成的 nginx 入口） ──────────────────────────
+  frontend-main:
+    image: faultdiag-frontend:integrated
+    build:
+      # 真·深融合：主前端构建时需要读取标注子系统源码（vite @annotation 别名指向
+      # ../../annotation-app/frontend/src，在 main-system/frontend 之外）。
+      # 因此 build context 必须扩散到仓库根，Dockerfile 用相对路径定位。
+      context: .
+      dockerfile: main-system/frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend-annotate
+      - backend-annotate
+    ports:
+      - "8081:80"
+    networks: [faultdiag]
+
+  # ─── 标注子系统后端 ──────────────────────────────────────────────────────
+  backend-annotate:
+    image: faultdiag-backend-annotate:latest
+    build:
+      context: ./annotation-app
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 单一数据库：与主系统共用 postgres 的 fault_diagnosis 逻辑库。
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-fault_diagnosis}
+      STORAGE_ROOT: /data/storage
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-21474836480}
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL:-http://backend:8000/api/v1/internal/llm/chat}
+      LLM_GATEWAY_TIMEOUT_SECONDS: ${LLM_GATEWAY_TIMEOUT_SECONDS:-180}
+      # 「从主系统导入」：标注后端经 docker 网络直连主后端（DB1）。
+      MAIN_SYSTEM_BACKEND_URL: ${MAIN_SYSTEM_BACKEND_URL:-http://backend:8000/api/v1}
+      # 标注保存/更新/删除后自动推送到主系统「文件选择」（集成方案 A 反向桥）。
+      ANNOTATION_AUTO_PUSH_MAIN: ${ANNOTATION_AUTO_PUSH_MAIN:-true}
+      ANNOTATION_AUTO_PUSH_TIMEOUT_SECONDS: ${ANNOTATION_AUTO_PUSH_TIMEOUT_SECONDS:-10}
+      # 让对内部服务(backend 等)的 HTTP 调用绕过可能被注入的系统代理，避免走死代理超时。
+      NO_PROXY: ${NO_PROXY:-backend,localhost,127.0.0.1}
+      no_proxy: ${NO_PROXY:-backend,localhost,127.0.0.1}
+    volumes:
+      - annotate_storage:/data/storage
+    depends_on:
+      # fault_types 由主系统 create_all 创建，标注子系统迁移的 FK 引用它，
+      # 故必须等主后端健康（create_all + seed 已提交）再跑本端 Alembic。
+      backend:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [faultdiag]
+
+  # ─── 标注子系统前端（生产构建 + 内部 nginx 托管 /annotate/） ────────────
+  frontend-annotate:
+    image: faultdiag-frontend-annotate:latest
+    build:
+      context: ./annotation-app
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend-annotate
+    networks: [faultdiag]
+
+volumes:
+  pgdata:
+  annotate_storage:
+  backend_outputs:
+  training_outputs:
+  data_imports:
+
+networks:
+  faultdiag:
+    driver: bridge

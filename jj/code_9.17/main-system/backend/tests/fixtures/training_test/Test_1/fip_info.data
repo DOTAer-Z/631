@@ -1,0 +1,2 @@
+FAULT_TYPE: watchdog_timeout
+TARGET_COMPONENT: nuttx/watchdog

@@ -1,0 +1,66 @@
+{
+  "version": "v3",
+  "sample_class": "fault",
+  "fault_type": "PRIORITY_INVERSION_IO_LOCK",
+  "domain": "TASK",
+  "source_session_id": "nuttx_priority_inversion_io_lock_p2w_a_r003",
+  "fault_point": "nuttx_priority_inversion_io_lock_p2w_a_r003",
+  "root_cause_text": "低优先级任务持有 I/O 锁时缺少优先级继承，高优先级任务被阻塞，最终形成优先级反转。",
+  "root_cause_mechanism": "missing_priority_inheritance_on_io_lock",
+  "root_cause_evidence": [
+    {
+      "stage": "trigger",
+      "timestamp": "2026-01-01T00:00:01.200Z",
+      "module": "storage_task",
+      "level": "WARN",
+      "message": "io_lock held beyond budget fault_family=task_scheduling severity=high phase=runtime stage=trigger hold_ms=94",
+      "component": "nuttx/storage_task",
+      "function_def": "src/storage/storage_task.c+287; 1"
+    },
+    {
+      "stage": "propagation",
+      "timestamp": "2026-01-01T00:00:01.250Z",
+      "module": "telemetry_task",
+      "level": "ERROR",
+      "message": "priority inversion detected while waiting for io_lock fault_family=task_scheduling severity=critical phase=runtime stage=propagation blocked_by=storage_task",
+      "component": "nuttx/telemetry_task",
+      "function_def": "src/comms/telemetry_task.c+161; 1"
+    },
+    {
+      "stage": "impact",
+      "timestamp": "2026-01-01T00:00:01.310Z",
+      "module": "sched_diag",
+      "level": "WARN",
+      "message": "priority inheritance ineffective under nested lock path fault_family=task_scheduling severity=high phase=runtime stage=impact",
+      "component": "nuttx/sched_diag",
+      "function_def": "src/kernel/sched_diag.c+91; 1"
+    },
+    {
+      "stage": "recovery",
+      "timestamp": "2026-01-01T00:00:04.700Z",
+      "module": "recovery_mgr",
+      "level": "WARN",
+      "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+    }
+  ],
+  "injection": {
+    "component": "nuttx/storage_task",
+    "function_def": "src/storage/storage_task.c+287; 1"
+  },
+  "propagation": [
+    {
+      "component": "nuttx/telemetry_task",
+      "function_def": "src/comms/telemetry_task.c+161; 1"
+    }
+  ],
+  "impact": {
+    "component": "nuttx/sched_diag",
+    "function_def": "src/kernel/sched_diag.c+91; 1"
+  },
+  "recovery": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+  }
+}

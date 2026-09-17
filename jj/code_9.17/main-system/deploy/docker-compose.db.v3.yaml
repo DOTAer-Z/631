@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: faultdiag-pg-v3
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: fault_diagnosis
+    ports:
+      - "5433:5432"
+    networks:
+      - faultdiag_net_v3
+
+networks:
+  faultdiag_net_v3:
+    external: true
