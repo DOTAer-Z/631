@@ -1,0 +1,37 @@
+# ── secrets -- NEVER commit ──────────────────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+*大模型API_key.txt
+
+# ── build / dependency artifacts ─────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# ── local model weights (regenerated/downloaded at runtime) ──────────────
+main-system/models/
+*.safetensors
+*.bin
+*.gguf
+*.part
+
+# ── scratch / temp worktree ──────────────────────────────────────────────
+main-system/frontend/.worktrees/
+__pycache__/
+
+# ── release / packaging outputs ──────────────────────────────────────────
+release_*/release_*.tar.gz
+release_20260906/
+images-integrated.tar.gz.*
+
+# ── misc ─────────────────────────────────────────────────────────────────
+.DS_Store
+*.log
+logs/

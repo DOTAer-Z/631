@@ -1,0 +1,66 @@
+{
+  "version": "v3",
+  "sample_class": "fault",
+  "fault_type": "TASK_STARVATION_BUSY_LOOP",
+  "domain": "TASK",
+  "source_session_id": "nuttx_task_starvation_busy_loop_p2w_a_r005",
+  "fault_point": "nuttx_task_starvation_busy_loop_p2w_a_r005",
+  "root_cause_text": "任务在异常路径中持续忙等且未主动让出 CPU，导致其他任务长期得不到调度并出现饥饿。",
+  "root_cause_mechanism": "busy_loop_without_yield_starvation",
+  "root_cause_evidence": [
+    {
+      "stage": "trigger",
+      "timestamp": "2026-01-01T00:00:01.100Z",
+      "module": "flight_ctrl",
+      "level": "WARN",
+      "message": "high priority loop overran dispatch slot fault_family=task_scheduling severity=high phase=runtime stage=trigger exec_us=12480 budget_us=5000",
+      "component": "nuttx/flight_ctrl",
+      "function_def": "src/control/att_loop.c+214; 1"
+    },
+    {
+      "stage": "propagation",
+      "timestamp": "2026-01-01T00:00:01.170Z",
+      "module": "nav_sched",
+      "level": "ERROR",
+      "message": "low priority navigation update missed release fault_family=task_scheduling severity=critical phase=runtime stage=propagation release_jitter_us=7300",
+      "component": "nuttx/nav_sched",
+      "function_def": "src/nav/nav_sched.c+133; 1"
+    },
+    {
+      "stage": "impact",
+      "timestamp": "2026-01-01T00:00:01.220Z",
+      "module": "healthmon",
+      "level": "WARN",
+      "message": "cpu guard entered overload state fault_family=task_scheduling severity=high phase=runtime stage=impact cpu_percent=98",
+      "component": "nuttx/healthmon",
+      "function_def": "apps/system/healthmon/healthmon.c+201; 1"
+    },
+    {
+      "stage": "recovery",
+      "timestamp": "2026-01-01T00:00:04.700Z",
+      "module": "recovery_mgr",
+      "level": "WARN",
+      "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+    }
+  ],
+  "injection": {
+    "component": "nuttx/flight_ctrl",
+    "function_def": "src/control/att_loop.c+214; 1"
+  },
+  "propagation": [
+    {
+      "component": "nuttx/nav_sched",
+      "function_def": "src/nav/nav_sched.c+133; 1"
+    }
+  ],
+  "impact": {
+    "component": "nuttx/healthmon",
+    "function_def": "apps/system/healthmon/healthmon.c+201; 1"
+  },
+  "recovery": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+  }
+}

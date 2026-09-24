@@ -1,0 +1,27 @@
+# 真·深融合：主前端 build context 已扩散到仓库根（见 docker-compose.yml）。
+# 这些规则只在「根即 context」时生效——排除 node_modules / 构建产物 / 虚拟环境，
+# 避免把 400M+ 依赖打进镜像层，也防止宿主 node_modules 覆盖容器内 npm ci 的干净依赖。
+
+# 前端依赖与产物（两套前端）
+main-system/frontend/node_modules
+main-system/frontend/dist
+annotation-app/frontend/node_modules
+annotation-app/frontend/dist
+
+# 后端 Python 虚拟环境与缓存
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+
+# VCS / 编辑器 / 系统
+.git
+.gitignore
+**/.superpowers
+**/.worktrees
+**/.idea
+**/.vscode
+**/*.log
+**/*.output
+**/*Zone.Identifier

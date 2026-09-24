@@ -1,0 +1,5 @@
+FAULT_TYPE: TASK_STARVATION_BUSY_LOOP
+TARGET_COMPONENT: nuttx/nav_sched
+TARGET_CLASS: none
+TARGET_FUNCTION_DEF: src/nav/nav_sched.c+133; 1
+FAULT_POINT: nuttx_task_starvation_busy_loop_p2w_a_r005

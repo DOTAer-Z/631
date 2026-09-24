@@ -1,0 +1,62 @@
+/* 标注子系统通用部件类（深融合版，由主系统引入）
+ * 主系统不再 import 标注的 style.css（其含 html/body/#app 全局规则，会污染主系统），
+ * 这里抽取 style.css 中的通用部件类，供标注 view 在主系统 bundle 里正常生效。
+ * 标注独立部署态仍走原 style.css（本文不参与），两者类名一致、可共存。
+ */
+
+.page-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.page-toolbar__hint {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.console-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
+}
+
+.console-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 280px;
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.console-placeholder__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.console-placeholder__description {
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.7;
+  color: #475569;
+}

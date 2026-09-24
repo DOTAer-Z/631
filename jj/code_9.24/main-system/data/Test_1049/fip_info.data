@@ -1,0 +1,5 @@
+FAULT_TYPE: WORKER_POOL_EXHAUSTION_UNBOUNDED_RETRY
+TARGET_COMPONENT: nuttx/recovery_mgr
+TARGET_CLASS: none
+TARGET_FUNCTION_DEF: apps/system/recovery/recovery_mgr.c+138; 1
+FAULT_POINT: nuttx_worker_pool_exhaustion_unbounded_retry_p2w_a_r009
