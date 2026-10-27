@@ -1,0 +1,17 @@
+**
+!model_train/
+!model_train/requirements.txt
+!model_train/pyproject.toml
+!model_train/src/
+!model_train/src/**
+!631_10.8/
+!631_10.8/code/
+!631_10.8/code/main-system/
+!631_10.8/code/main-system/backend/
+!631_10.8/code/main-system/backend/Dockerfile.training
+!631_10.8/code/main-system/backend/Dockerfile.training.dockerignore
+!631_10.8/code/main-system/backend/training-entrypoint.sh
+!631_10.8/code/main-system/backend/app/
+!631_10.8/code/main-system/backend/app/**
+**/__pycache__/
+**/*.py[cod]

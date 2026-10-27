@@ -1,0 +1,455 @@
+{
+  "sample-f4512-high-load": {
+    "sample_id": "sample-f4512-high-load",
+    "title": "持续高系统负载",
+    "display_source": "NuttX",
+    "display_fault_mode": "cpu_overload",
+    "replay_fault_type": "F4512",
+    "evidence_mode": "fixture",
+    "is_real_euler_sample": false,
+    "ground_truth": {
+      "version": "v3",
+      "sample_class": "fault",
+      "fault_type": "RESOURCE_OVERCOMMIT_SCHED_STARVATION",
+      "domain": "VIRT",
+      "source_session_id": "nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138",
+      "fault_point": "nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138",
+      "root_cause_text": "虚拟化运行时、资源隔离或虚拟时钟路径异常，导致任务执行和 I/O 行为偏离预期。",
+      "root_cause_mechanism": "virtualization_or_runtime_isolation_fault",
+      "root_cause_evidence": [
+        {
+          "stage": "trigger",
+          "timestamp": "2026-01-01T00:00:02.020Z",
+          "module": "virt_mgr",
+          "level": "WARN",
+          "message": "runtime guard detected resource overcommit sched starvation fault_family=virtual_runtime severity=high phase=runtime stage=trigger",
+          "component": "nuttx/virt_mgr",
+          "function_def": "src/virt/virt_mgr.c+101; 1"
+        },
+        {
+          "stage": "propagation",
+          "timestamp": "2026-01-01T00:00:02.140Z",
+          "module": "clock_sync",
+          "level": "WARN",
+          "message": "downstream propagation remained visible after resource overcommit sched starvation fault_family=virtual_runtime severity=high phase=runtime stage=propagation",
+          "component": "nuttx/clock_sync",
+          "function_def": "src/virt/clock_sync.c+88; 1"
+        },
+        {
+          "stage": "impact",
+          "timestamp": "2026-01-01T00:00:02.080Z",
+          "module": "io_proxy",
+          "level": "ERROR",
+          "message": "execution path violated contract after resource overcommit sched starvation fault_family=virtual_runtime severity=critical phase=runtime stage=impact",
+          "component": "nuttx/io_proxy",
+          "function_def": "src/virt/io_proxy.c+144; 1"
+        },
+        {
+          "stage": "recovery",
+          "timestamp": "2026-01-01T00:00:04.700Z",
+          "module": "recovery_mgr",
+          "level": "WARN",
+          "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+          "component": "nuttx/recovery_mgr",
+          "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+        }
+      ],
+      "injection": {
+        "component": "nuttx/virt_mgr",
+        "function_def": "src/virt/virt_mgr.c+101; 1"
+      },
+      "propagation": [
+        {
+          "component": "nuttx/clock_sync",
+          "function_def": "src/virt/clock_sync.c+88; 1"
+        }
+      ],
+      "impact": {
+        "component": "nuttx/io_proxy",
+        "function_def": "src/virt/io_proxy.c+144; 1"
+      },
+      "recovery": {
+        "component": "nuttx/recovery_mgr",
+        "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+      }
+    },
+    "log_summary": [
+      {
+        "path": "logs/round_1/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 4,
+        "preview": [
+          "2026-07-28T21:50:54.903422+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"run_start\", \"step_count\": 1}",
+          "2026-07-28T21:50:54.903535+00:00 nuttx-qemu-host 1002 INFO fault.injector [- - -] {\"event\": \"step_start\", \"step\": \"orchestrator_step\"}",
+          "2026-07-28T21:50:57.903752+00:00 nuttx-qemu-host 1003 INFO fault.injector [- - -] {\"event\": \"step_end\", \"rc\": 0, \"step\": \"orchestrator_step\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/foreground_wl/nuttx_qemu_workload-nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T21:50:52.830267+00:00 nuttx-qemu-host 4001 INFO workload.runner [- - -] session=nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138 exported_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_1/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T21:50:52.936138+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 0.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 31.8, \"session_id\": \"nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138\"}",
+          "2026-07-28T21:50:54.026748+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 4.8, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 30.0, \"session_id\": \"nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138\"}",
+          "2026-07-28T21:50:55.148252+00:00 nuttx-qemu-host 2003 INFO monitor.host [- - -] {\"cpu_percent_total\": 4.4, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 27.7, \"session_id\": \"nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 41,
+        "preview": [
+          "2026-07-28T21:50:52.843180+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T21:50:52.844180+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T21:50:52.845180+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      },
+      {
+        "path": "logs/round_2/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T21:50:52.830267+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"baseline_run\", \"step\": \"baseline\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/foreground_wl/nuttx_qemu_workload-nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138-baseline.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T21:50:52.830267+00:00 nuttx-qemu-host 4002 INFO workload.runner [- - -] session=nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138 exported_baseline_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_2/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 2,
+        "preview": [
+          "2026-07-28T21:50:52.936138+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 0.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 31.8, \"session_id\": \"nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138\"}",
+          "2026-07-28T21:50:54.026748+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 4.8, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 30.0, \"session_id\": \"nuttx_resource_overcommit_sched_starvation_local_100k_150k_s3_r138\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T21:50:52.843180+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T21:50:52.844180+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T21:50:52.845180+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      }
+    ],
+    "display_artifact": "sample-f4512-high-load/display_artifact"
+  },
+  "sample-f4620-memory": {
+    "sample_id": "sample-f4620-memory",
+    "title": "可用内存枯竭",
+    "display_source": "NuttX",
+    "display_fault_mode": "oom",
+    "replay_fault_type": "F4620",
+    "evidence_mode": "fixture",
+    "is_real_euler_sample": false,
+    "ground_truth": {
+      "version": "v3",
+      "sample_class": "fault",
+      "fault_type": "HEAP_EXHAUSTION_ALLOC_RETRY",
+      "domain": "MEM",
+      "source_session_id": "nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017",
+      "fault_point": "nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017",
+      "root_cause_text": "异常路径持续重试而不释放资源，导致工作队列、内存或工作线程逐步耗尽。",
+      "root_cause_mechanism": "resource_exhaustion_unbounded_retry",
+      "root_cause_evidence": [
+        {
+          "stage": "trigger",
+          "timestamp": "2026-01-01T00:00:03.020Z",
+          "module": "allocator",
+          "level": "WARN",
+          "message": "repeated retry path reduced free heap below reserve fault_family=memory severity=high phase=runtime stage=trigger free_bytes=4096",
+          "component": "nuttx/allocator",
+          "function_def": "mm/kmm_heap/kmm_malloc.c+88; 1"
+        },
+        {
+          "stage": "propagation",
+          "timestamp": "2026-01-01T00:00:03.210Z",
+          "module": "comms_buffer",
+          "level": "WARN",
+          "message": "telemetry ring buffer dropped frame due to allocation miss fault_family=memory severity=high phase=runtime stage=propagation dropped_frames=6",
+          "component": "nuttx/comms_buffer",
+          "function_def": "src/comms/comms_buffer.c+59; 1"
+        },
+        {
+          "stage": "impact",
+          "timestamp": "2026-01-01T00:00:03.150Z",
+          "module": "allocator",
+          "level": "ERROR",
+          "message": "allocation failed after retry budget exhausted fault_family=memory severity=critical phase=runtime stage=impact size=2048 arena=Umem",
+          "component": "nuttx/allocator",
+          "function_def": "mm/kmm_heap/kmm_malloc.c+117; 1"
+        },
+        {
+          "stage": "recovery",
+          "timestamp": "2026-01-01T00:00:04.700Z",
+          "module": "recovery_mgr",
+          "level": "WARN",
+          "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+          "component": "nuttx/recovery_mgr",
+          "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+        }
+      ],
+      "injection": {
+        "component": "nuttx/allocator",
+        "function_def": "mm/kmm_heap/kmm_malloc.c+88; 1"
+      },
+      "propagation": [
+        {
+          "component": "nuttx/comms_buffer",
+          "function_def": "src/comms/comms_buffer.c+59; 1"
+        }
+      ],
+      "impact": {
+        "component": "nuttx/allocator",
+        "function_def": "mm/kmm_heap/kmm_malloc.c+117; 1"
+      },
+      "recovery": {
+        "component": "nuttx/recovery_mgr",
+        "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+      }
+    },
+    "log_summary": [
+      {
+        "path": "logs/round_1/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 4,
+        "preview": [
+          "2026-07-28T10:26:37.999603+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"run_start\", \"step_count\": 1}",
+          "2026-07-28T10:26:37.999732+00:00 nuttx-qemu-host 1002 INFO fault.injector [- - -] {\"event\": \"step_start\", \"step\": \"orchestrator_step\"}",
+          "2026-07-28T10:26:39.199966+00:00 nuttx-qemu-host 1003 INFO fault.injector [- - -] {\"event\": \"step_end\", \"rc\": 0, \"step\": \"orchestrator_step\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/foreground_wl/nuttx_qemu_workload-nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T10:26:35.925317+00:00 nuttx-qemu-host 4001 INFO workload.runner [- - -] session=nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017 exported_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_1/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T10:26:36.011713+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 25.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 33.3, \"session_id\": \"nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017\"}",
+          "2026-07-28T10:26:37.091085+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 4.7, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 33.3, \"session_id\": \"nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017\"}",
+          "2026-07-28T10:26:38.175934+00:00 nuttx-qemu-host 2003 INFO monitor.host [- - -] {\"cpu_percent_total\": 5.4, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 33.1, \"session_id\": \"nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 33,
+        "preview": [
+          "2026-07-28T10:26:35.937194+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T10:26:35.938194+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T10:26:35.939194+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      },
+      {
+        "path": "logs/round_2/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T10:26:35.925317+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"baseline_run\", \"step\": \"baseline\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/foreground_wl/nuttx_qemu_workload-nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017-baseline.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T10:26:35.925317+00:00 nuttx-qemu-host 4002 INFO workload.runner [- - -] session=nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017 exported_baseline_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_2/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 2,
+        "preview": [
+          "2026-07-28T10:26:36.011713+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 25.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 33.3, \"session_id\": \"nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017\"}",
+          "2026-07-28T10:26:37.091085+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 4.7, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 33.3, \"session_id\": \"nuttx_heap_exhaustion_alloc_retry_local_100k_150k_s4_r017\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T10:26:35.937194+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T10:26:35.938194+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T10:26:35.939194+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      }
+    ],
+    "display_artifact": "sample-f4620-memory/display_artifact"
+  },
+  "sample-f5313-tcp": {
+    "sample_id": "sample-f5313-tcp",
+    "title": "TCP 连接失败",
+    "display_source": "NuttX",
+    "display_fault_mode": "network_error",
+    "replay_fault_type": "F5313",
+    "evidence_mode": "fixture",
+    "is_real_euler_sample": false,
+    "ground_truth": {
+      "version": "v3",
+      "sample_class": "fault",
+      "fault_type": "ETHERNET_PHY_LINK_FLAP_UNHANDLED",
+      "domain": "NET",
+      "source_session_id": "nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088",
+      "fault_point": "nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088",
+      "root_cause_text": "网络管理、链路层恢复或帧级校验处理异常，导致链路不可用、重试放大或状态失步。",
+      "root_cause_mechanism": "network_management_or_link_layer_fault",
+      "root_cause_evidence": [
+        {
+          "stage": "trigger",
+          "timestamp": "2026-01-01T00:00:02.020Z",
+          "module": "net_mgr",
+          "level": "WARN",
+          "message": "runtime guard detected ethernet phy link flap unhandled fault_family=network_runtime severity=high phase=runtime stage=trigger",
+          "component": "nuttx/net_mgr",
+          "function_def": "src/net/net_manager.c+121; 1"
+        },
+        {
+          "stage": "propagation",
+          "timestamp": "2026-01-01T00:00:02.140Z",
+          "module": "eth_link",
+          "level": "WARN",
+          "message": "downstream propagation remained visible after ethernet phy link flap unhandled fault_family=network_runtime severity=high phase=runtime stage=propagation",
+          "component": "nuttx/eth_link",
+          "function_def": "src/net/eth_link.c+88; 1"
+        },
+        {
+          "stage": "impact",
+          "timestamp": "2026-01-01T00:00:02.080Z",
+          "module": "can_stack",
+          "level": "ERROR",
+          "message": "execution path violated contract after ethernet phy link flap unhandled fault_family=network_runtime severity=critical phase=runtime stage=impact",
+          "component": "nuttx/can_stack",
+          "function_def": "src/net/can_stack.c+204; 1"
+        },
+        {
+          "stage": "recovery",
+          "timestamp": "2026-01-01T00:00:04.700Z",
+          "module": "recovery_mgr",
+          "level": "WARN",
+          "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+          "component": "nuttx/recovery_mgr",
+          "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+        }
+      ],
+      "injection": {
+        "component": "nuttx/net_mgr",
+        "function_def": "src/net/net_manager.c+121; 1"
+      },
+      "propagation": [
+        {
+          "component": "nuttx/eth_link",
+          "function_def": "src/net/eth_link.c+88; 1"
+        }
+      ],
+      "impact": {
+        "component": "nuttx/can_stack",
+        "function_def": "src/net/can_stack.c+204; 1"
+      },
+      "recovery": {
+        "component": "nuttx/recovery_mgr",
+        "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+      }
+    },
+    "log_summary": [
+      {
+        "path": "logs/round_1/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 4,
+        "preview": [
+          "2026-07-28T17:06:03.705873+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"run_start\", \"step_count\": 1}",
+          "2026-07-28T17:06:03.706056+00:00 nuttx-qemu-host 1002 INFO fault.injector [- - -] {\"event\": \"step_start\", \"step\": \"orchestrator_step\"}",
+          "2026-07-28T17:06:06.706238+00:00 nuttx-qemu-host 1003 INFO fault.injector [- - -] {\"event\": \"step_end\", \"rc\": 0, \"step\": \"orchestrator_step\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/foreground_wl/nuttx_qemu_workload-nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T17:06:01.605680+00:00 nuttx-qemu-host 4001 INFO workload.runner [- - -] session=nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088 exported_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_1/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T17:06:01.694905+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 20.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 14.1, \"session_id\": \"nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088\"}",
+          "2026-07-28T17:06:02.775963+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 2.5, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 14.2, \"session_id\": \"nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088\"}",
+          "2026-07-28T17:06:03.876669+00:00 nuttx-qemu-host 2003 INFO monitor.host [- - -] {\"cpu_percent_total\": 1.8, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 14.1, \"session_id\": \"nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088\"}"
+        ]
+      },
+      {
+        "path": "logs/round_1/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 41,
+        "preview": [
+          "2026-07-28T17:06:01.617888+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T17:06:01.618888+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T17:06:01.619888+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      },
+      {
+        "path": "logs/round_2/faults/fault_events.log",
+        "category": "faults",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T17:06:01.605680+00:00 nuttx-qemu-host 1001 INFO fault.injector [- - -] {\"event\": \"baseline_run\", \"step\": \"baseline\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/foreground_wl/nuttx_qemu_workload-nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088-baseline.out.log.bzip2.out",
+        "category": "foreground_wl",
+        "line_count": 1,
+        "preview": [
+          "2026-07-28T17:06:01.605680+00:00 nuttx-qemu-host 4002 INFO workload.runner [- - -] session=nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088 exported_baseline_from_joint_session"
+        ]
+      },
+      {
+        "path": "logs/round_2/monitor/system_metrics.log",
+        "category": "monitor",
+        "line_count": 2,
+        "preview": [
+          "2026-07-28T17:06:01.694905+00:00 nuttx-qemu-host 2001 INFO monitor.host [- - -] {\"cpu_percent_total\": 20.0, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 14.1, \"session_id\": \"nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088\"}",
+          "2026-07-28T17:06:02.775963+00:00 nuttx-qemu-host 2002 INFO monitor.host [- - -] {\"cpu_percent_total\": 2.5, \"host\": \"cxds1205-Precision-7920-Tower\", \"memory_used_percent\": 14.2, \"session_id\": \"nuttx_ethernet_phy_link_flap_unhandled_local_100k_150k_s3_r088\"}"
+        ]
+      },
+      {
+        "path": "logs/round_2/nuttx/qemu_console.log",
+        "category": "nuttx",
+        "line_count": 8,
+        "preview": [
+          "2026-07-28T17:06:01.617888+00:00 nuttx-qemu-host 3001 INFO nuttx.nsh [- - -] NuttShell (NSH) NuttX-12.13.0",
+          "2026-07-28T17:06:01.618888+00:00 nuttx-qemu-host 3002 INFO nuttx.nuttx [- - -] uname -a",
+          "2026-07-28T17:06:01.619888+00:00 nuttx-qemu-host 3003 INFO nuttx.nuttx [- - -] NuttX 12.13.0 b9b5d9afbf May 27 2026 14:40:40 arm qemu-armv7a"
+        ]
+      }
+    ],
+    "display_artifact": "sample-f5313-tcp/display_artifact"
+  }
+}

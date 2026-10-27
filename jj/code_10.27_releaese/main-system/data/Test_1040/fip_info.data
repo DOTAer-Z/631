@@ -1,0 +1,5 @@
+FAULT_TYPE: QUEUE_CONSUMER_STALL_MISSING_WAKEUP
+TARGET_COMPONENT: nuttx/telemetry_task
+TARGET_CLASS: none
+TARGET_FUNCTION_DEF: src/comms/telemetry_task.c+204; 1
+FAULT_POINT: nuttx_queue_consumer_stall_missing_wakeup_p2w_a_r010

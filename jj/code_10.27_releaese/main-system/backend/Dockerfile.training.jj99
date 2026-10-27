@@ -1,0 +1,35 @@
+FROM pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime
+
+WORKDIR /app
+
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY model_train/requirements.txt /tmp/model-training-requirements.txt
+RUN sed '/^torch==/d; /^--extra-index-url/d' /tmp/model-training-requirements.txt \
+        > /tmp/model-training-runtime.txt \
+    && pip install --no-cache-dir -r /tmp/model-training-runtime.txt
+
+COPY model_train/pyproject.toml /opt/model_train/pyproject.toml
+COPY model_train/src/ /opt/model_train/src/
+RUN pip install --no-cache-dir --no-deps -e /opt/model_train
+
+RUN pip install --no-cache-dir \
+        sqlalchemy==2.0.30 \
+        psycopg2-binary==2.9.9 \
+        pydantic-settings==2.2.1
+
+COPY 631_9.9/main-system/backend/app/ /app/app/
+COPY 631_9.9/main-system/backend/training-entrypoint.sh /app/training-entrypoint.sh
+RUN chmod +x /app/training-entrypoint.sh
+
+ENTRYPOINT ["/app/training-entrypoint.sh"]
+CMD ["python", "-m", "app.training_worker.main"]

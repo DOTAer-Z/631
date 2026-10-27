@@ -1,0 +1,846 @@
+# new_pipeline 数据创建总结
+
+## 概述
+
+新版数据处理流水线创建了四层存储架构：
+
+1. **MySQL** - 元数据层 / 任务层 / 结果层
+2. **MongoDB** - 证据层
+3. **FAISS** - 独立向量库
+4. **文件系统** - 知识图谱导出
+
+---
+
+## 脚本修改说明（2026-03-20）
+
+### 问题背景
+原始数据流中，log_windows 和 FAISS 向量库的 metadata 缺少 `fault_type`、`root_cause`、`root_cause_type` 字段，导致检索阶段无法获取故障标签信息，KG 推理结果为空。
+
+### 修改内容
+
+#### 1. 04_build_log_windows_v2.py
+**新增功能**：
+- 从 MySQL `diagnosis_results` 和 `cases` 表补查故障标签字段
+- 将标签字段写入 log_windows 文档的顶层
+- 同时写入 `metadata` 子字段，便于后续统一读取
+
+**修改细节**：
+- 新增 `fetch_mysql_labels()` 函数：按优先级查询 diagnosis_results → cases
+- 修改 `get_run_meta()` 函数：合并 MySQL 标签数据
+- 修改 `build_window_doc()` 函数：在文档顶层和 metadata 子字段中都包含标签
+- 新增索引：`idx_windows_task: (task_id)`
+
+**数据流变化**：
+```
+MySQL diagnosis_results/cases
+    ↓ (查询 fault_type, root_cause, root_cause_type)
+MongoDB log_windows
+    ├─ 顶层字段：fault_type, root_cause, root_cause_type
+    └─ metadata 子字段：包含上述字段 + 其他元信息
+```
+
+#### 2. 05_build_vector_index_faiss.py
+**新增功能**：
+- 从 log_windows 读取标签字段（兼容顶层和 metadata 子字段）
+- 将标签字段写入 FAISS metadata.jsonl
+- 统计标签字段非空数量
+
+**修改细节**：
+- 新增 `get_label_field()` 函数：兼容两种字段来源
+- 修改 `fetch_windows_batch()` 的 projection：包含标签字段和 metadata
+- 修改 metadata 构建逻辑：写入 fault_type, root_cause, root_cause_type
+- build_info.json 新增 `label_stats` 字段：统计非空标签数量
+
+**数据流变化**：
+```
+MongoDB log_windows (包含标签字段)
+    ↓ (读取 fault_type, root_cause, root_cause_type)
+FAISS metadata.jsonl
+    └─ 包含完整的故障标签信息
+```
+
+#### 3. 06_build_knowledge_graph.py
+**说明**：
+- 该脚本从 MySQL 的 cases 和 diagnosis_results 表获取故障标签信息
+- 通过 case_fault_map 和 task_fault_map 建立 LogWindow → FaultType 的关联
+- 不直接从 log_windows 读取标签字段（因为已通过 MySQL 获取）
+
+**数据流**：
+```
+MySQL cases / diagnosis_results
+    ↓ (构建 case_fault_map 和 task_fault_map)
+MongoDB log_windows
+    ↓ (通过 case_id / task_id 关联)
+KG LogWindow 节点
+    └─ 通过 SUPPORTS_FAULT 边关联到 FaultType
+```
+
+
+## MySQL 数据库表结构
+
+### 1. systems (系统表)
+**用途**: 存储系统基本信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| system_id | VARCHAR(128) PK | 系统唯一标识 |
+| system_code | VARCHAR(128) | 系统代码 |
+| system_name | VARCHAR(255) | 系统名称 |
+| system_desc | TEXT | 系统描述 |
+| version | VARCHAR(128) | 版本 |
+| status | VARCHAR(32) | 状态 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `openstack`, `OpenStack`, `OpenStack fault injection dataset`
+
+---
+
+### 2. subsystems (子系统表)
+**用途**: 存储子系统信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| subsystem_id | BIGINT PK | 子系统自增 ID |
+| system_id | VARCHAR(128) FK | 关联 systems |
+| subsystem_code | VARCHAR(128) | 子系统代码 |
+| subsystem_name | VARCHAR(255) | 子系统名称 |
+| subsystem_desc | TEXT | 子系统描述 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `Nova`, `Cinder`, `Neutron`
+
+---
+
+### 3. components (组件表)
+**用途**: 存储代码组件信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| component_id | BIGINT PK | 组件自增 ID |
+| system_id | VARCHAR(128) FK | 关联 systems |
+| subsystem_id | BIGINT FK | 关联 subsystems |
+| component_code | VARCHAR(255) | 组件代码 |
+| component_name | VARCHAR(255) | 组件名称 |
+| component_path | VARCHAR(1024) | 组件路径 |
+| component_type | VARCHAR(64) | 组件类型 |
+| owner | VARCHAR(255) | 所有者 |
+| status | VARCHAR(32) | 状态 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `/cinder/db/sqlalchemy/api.py`, `nova.compute.manager`
+
+---
+
+### 4. cases (测试用例表)
+**用途**: 存储测试用例信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| case_id | VARCHAR(255) PK | 用例唯一标识 |
+| system_id | VARCHAR(128) FK | 关联 systems |
+| subsystem_id | BIGINT FK | 关联 subsystems |
+| case_code | VARCHAR(255) | 用例代码 |
+| case_name | VARCHAR(255) | 用例名称 |
+| case_desc | TEXT | 用例描述 |
+| test_name | VARCHAR(255) | 测试名称 |
+| is_fault | TINYINT(1) | 是否故障 |
+| fault_type | VARCHAR(255) | 故障类型 |
+| root_cause_type | VARCHAR(255) | 根因类型 |
+| target_component_id | BIGINT FK | 目标组件 |
+| target_component_path | VARCHAR(1024) | 目标组件路径 |
+| target_function | VARCHAR(255) | 目标函数 |
+| injection_point | TEXT | 注入点 |
+| fip_info_json | JSON | 故障注入信息 |
+| root_cause_json | JSON | 根因信息 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `openstack_Nova_Test_1`, `OPENSTACK_WRONG_RETURN_VALUE-VOLUME`
+
+---
+
+### 5. runs (运行轮次表)
+**用途**: 存储运行轮次信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| run_id | VARCHAR(255) PK | 运行唯一标识 |
+| case_id | VARCHAR(255) FK | 关联 cases |
+| system_id | VARCHAR(128) FK | 关联 systems |
+| round_no | INT | 轮次编号 |
+| run_name | VARCHAR(255) | 运行名称 |
+| status | VARCHAR(32) | 状态 |
+| is_fault | TINYINT(1) | 是否故障轮次 |
+| log_dir | VARCHAR(2048) | 日志目录 |
+| start_time | DATETIME(6) | 开始时间 |
+| end_time | DATETIME(6) | 结束时间 |
+| total_logs | INT | 总日志数 |
+| error_logs | INT | 错误日志数 |
+| critical_logs | INT | 严重错误日志数 |
+| window_count | INT | 窗口数量 |
+| stats_json | JSON | 统计信息 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `openstack_Nova_Test_1_round_1`, `round_1`, `ready` → `ingested`
+
+---
+
+### 6. labels (标签字典表)
+**用途**: 存储标签定义
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| label_id | BIGINT PK | 标签自增 ID |
+| label_type | VARCHAR(64) | 标签类型 |
+| label_code | VARCHAR(255) | 标签代码 |
+| label_name | VARCHAR(255) | 标签名称 |
+| label_desc | TEXT | 标签描述 |
+| parent_label_id | BIGINT FK | 父标签 |
+| status | VARCHAR(32) | 状态 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `fault_type`, `root_cause`, `OPENSTACK_WRONG_RETURN_VALUE-VOLUME`
+
+---
+
+### 7. object_labels (对象标签关联表)
+**用途**: 存储对象与标签的关联
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| object_label_id | BIGINT PK | 关联自增 ID |
+| object_type | VARCHAR(64) | 对象类型 |
+| object_id | VARCHAR(255) | 对象 ID |
+| label_id | BIGINT FK | 标签 ID |
+| source | VARCHAR(64) | 标签来源 |
+| confidence | DECIMAL(8,6) | 置信度 |
+| payload_json | JSON | 附加载荷 |
+| created_at | TIMESTAMP | 创建时间 |
+
+**示例数据**: `run`, `openstack_Nova_Test_1_round_1`, `fip`, `1.0`
+
+---
+
+### 8. ingestions (导入记录表)
+**用途**: 审计数据导入记录
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| ingestion_id | BIGINT PK | 导入记录 ID |
+| dataset_version | VARCHAR(255) | 数据集版本 |
+| script_version | VARCHAR(255) | 脚本版本 |
+| source_type | VARCHAR(64) | 来源类型 |
+| source_name | VARCHAR(255) | 来源名称 |
+| source_path | VARCHAR(2048) | 来源路径 |
+| trigger_mode | VARCHAR(64) | 触发模式 |
+| status | VARCHAR(32) | 状态 |
+| started_at | DATETIME(6) | 开始时间 |
+| finished_at | DATETIME(6) | 结束时间 |
+| inserted_log_count | INT | 插入日志数 |
+| inserted_window_count | INT | 插入窗口数 |
+| inserted_embedding_count | INT | 插入嵌入数 |
+| error_message | TEXT | 错误信息 |
+| operator_name | VARCHAR(255) | 操作员 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 9. diagnosis_tasks (诊断任务表)
+**用途**: 存储诊断任务信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| task_id | VARCHAR(255) PK | 任务唯一标识 |
+| task_code | VARCHAR(255) | 任务代码 |
+| task_type | VARCHAR(64) | 任务类型 |
+| source_mode | VARCHAR(64) | 来源模式 |
+| system_id | VARCHAR(128) FK | 关联 systems |
+| subsystem_id | BIGINT FK | 关联 subsystems |
+| component_id | BIGINT FK | 关联 components |
+| case_id | VARCHAR(255) FK | 关联 cases |
+| run_id | VARCHAR(255) FK | 关联 runs |
+| status | VARCHAR(32) | 状态 |
+| priority | VARCHAR(32) | 优先级 |
+| created_by | VARCHAR(255) | 创建者 |
+| trigger_source | VARCHAR(64) | 触发来源 |
+| task_desc | TEXT | 任务描述 |
+| created_at | DATETIME(6) | 创建时间 |
+| started_at | DATETIME(6) | 开始时间 |
+| finished_at | DATETIME(6) | 结束时间 |
+
+**示例数据**: `task::openstack_Nova_Test_1_round_1`, `fault_diagnosis`, `ready`
+
+---
+
+### 10. task_inputs (任务输入表)
+**用途**: 存储任务输入信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| task_input_id | BIGINT PK | 输入自增 ID |
+| task_id | VARCHAR(255) FK | 关联 tasks |
+| input_type | VARCHAR(64) | 输入类型 |
+| input_count | INT | 输入数量 |
+| mongo_ref_id | VARCHAR(255) | MongoDB 引用 ID |
+| summary_text | TEXT | 摘要文本 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 11. task_feature_summaries (任务特征摘要表)
+**用途**: 存储任务特征摘要
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| feature_id | BIGINT PK | 特征自增 ID |
+| task_id | VARCHAR(255) FK | 关联 tasks |
+| feature_type | VARCHAR(64) | 特征类型 |
+| feature_name | VARCHAR(255) | 特征名称 |
+| feature_value | TEXT | 特征值 |
+| value_type | VARCHAR(64) | 值类型 |
+| confidence | DECIMAL(8,6) | 置信度 |
+| source_evidence_id | VARCHAR(255) | 证据引用 ID |
+| created_at | TIMESTAMP | 创建时间 |
+
+**示例数据**: `log_window`, `window_count`, `150`, `int`
+
+---
+
+### 12. task_metric_features (任务指标特征表)
+**用途**: 存储任务指标特征
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| metric_feature_id | BIGINT PK | 指标特征 ID |
+| task_id | VARCHAR(255) FK | 关联 tasks |
+| metric_code | VARCHAR(255) | 指标代码 |
+| window_start | DATETIME(6) | 窗口开始 |
+| window_end | DATETIME(6) | 窗口结束 |
+| avg_value | DOUBLE | 平均值 |
+| max_value | DOUBLE | 最大值 |
+| min_value | DOUBLE | 最小值 |
+| anomaly_count | INT | 异常计数 |
+| trend | VARCHAR(64) | 趋势 |
+| summary_json | JSON | 摘要信息 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 13. diagnosis_results (诊断结果表)
+**用途**: 存储诊断结果
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| result_id | BIGINT PK | 结果自增 ID |
+| task_id | VARCHAR(255) FK | 关联 tasks |
+| result_version | INT | 结果版本 |
+| is_fault | TINYINT(1) | 是否故障 |
+| fault_type | VARCHAR(255) | 故障类型 |
+| root_cause | TEXT | 根因 |
+| root_cause_type | VARCHAR(255) | 根因类型 |
+| target_component_id | BIGINT FK | 目标组件 |
+| target_function | VARCHAR(255) | 目标函数 |
+| severity | VARCHAR(64) | 严重程度 |
+| confidence | DECIMAL(8,6) | 置信度 |
+| recommendation | TEXT | 建议 |
+| explanation_text | LONGTEXT | 解释文本 |
+| decision_path | TEXT | 决策路径 |
+| result_status | VARCHAR(32) | 结果状态 |
+| created_at | DATETIME(6) | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+**示例数据**: `golden`, `high`, `1.0`, `fip`
+
+---
+
+### 14. result_evidence_refs (结果证据引用表)
+**用途**: 存储结果证据引用
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| ref_id | BIGINT PK | 引用自增 ID |
+| result_id | BIGINT FK | 关联 results |
+| evidence_type | VARCHAR(64) | 证据类型 |
+| mongo_ref_id | VARCHAR(255) | MongoDB 引用 ID |
+| score | DOUBLE | 分数 |
+| role_name | VARCHAR(64) | 角色名称 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 15. result_writebacks (结果回写表)
+**用途**: 存储结果回写信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| writeback_id | BIGINT PK | 回写自增 ID |
+| result_id | BIGINT FK | 关联 results |
+| target_system | VARCHAR(255) | 目标系统 |
+| target_table_or_api | VARCHAR(255) | 目标表或API |
+| writeback_status | VARCHAR(32) | 回写状态 |
+| request_payload | LONGTEXT | 请求载荷 |
+| response_payload | LONGTEXT | 响应载荷 |
+| error_message | TEXT | 错误信息 |
+| written_at | DATETIME(6) | 写入时间 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 16. metric_definitions (指标定义表)
+**用途**: 存储指标定义
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| metric_def_id | BIGINT PK | 指标定义 ID |
+| metric_code | VARCHAR(255) | 指标代码 |
+| metric_name | VARCHAR(255) | 指标名称 |
+| metric_category | VARCHAR(128) | 指标类别 |
+| unit | VARCHAR(64) | 单位 |
+| description | TEXT | 描述 |
+| normal_range_min | DOUBLE | 正常范围最小值 |
+| normal_range_max | DOUBLE | 正常范围最大值 |
+| component_scope | VARCHAR(255) | 组件范围 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+---
+
+### 17. model_versions (模型版本表)
+**用途**: 存储模型版本信息
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| model_version_id | BIGINT PK | 模型版本 ID |
+| model_type | VARCHAR(64) | 模型类型 |
+| model_name | VARCHAR(255) | 模型名称 |
+| model_version | VARCHAR(255) | 模型版本 |
+| provider | VARCHAR(255) | 提供者 |
+| status | VARCHAR(32) | 状态 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 18. task_execution_records (任务执行记录表)
+**用途**: 存储任务执行记录
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| exec_id | BIGINT PK | 执行记录 ID |
+| task_id | VARCHAR(255) FK | 关联 tasks |
+| stage_name | VARCHAR(64) | 阶段名称 |
+| strategy_name | VARCHAR(64) | 策略名称 |
+| model_version_id | BIGINT FK | 模型版本 |
+| status | VARCHAR(32) | 状态 |
+| started_at | DATETIME(6) | 开始时间 |
+| finished_at | DATETIME(6) | 结束时间 |
+| error_message | TEXT | 错误信息 |
+| exec_details_json | JSON | 执行详情 |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+## MongoDB 集合结构
+
+### 1. log_entries (日志条目集合)
+**用途**: 存储逐行解析的日志条目
+
+**文档结构**:
+```javascript
+{
+  "_id": ObjectId(...),
+  "system_id": "openstack",
+  "subsystem": "Nova",
+  "test_name": "Test_1",
+  "case_id": "openstack_Nova_Test_1",
+  "run_id": "openstack_Nova_Test_1_round_1",
+  "round_no": 1,
+  "is_fault": true,
+  "task_id": "task::openstack_Nova_Test_1_round_1",
+  
+  "timestamp": ISODate("2024-01-01T10:05:00.123Z"),
+  "hostname": "compute-1",
+  "process_id": 12345,
+  "level": "ERROR",
+  "module": "nova.compute",
+  "request_id": "req-abc123",
+  "user_id": "user1",
+  "project_id": "proj1",
+  "message": "Failed to spawn instance",
+  
+  "raw_line": "2024-01-01T10:05:00.123456 compute-1 12345 ERROR nova.compute [req-abc123 user1 proj1] Failed to spawn instance",
+  "line_no": 100,
+  "file_path": "/path/to/log/file.log",
+  "data_origin": "dataset",
+  "ingested_at": ISODate("2024-01-01T12:00:00Z")
+}
+```
+
+**索引**:
+- idx_run_time: (run_id, timestamp)
+- idx_run_level: (run_id, level)
+- idx_run_module: (run_id, module)
+
+---
+
+### 2. evidence_inputs (证据输入集合)
+**用途**: 存储证据输入记录
+
+**文档结构**:
+```javascript
+{
+  "_id": "evidence::log::openstack_Nova_Test_1_round_1",
+  "task_id": "task::openstack_Nova_Test_1_round_1",
+  "input_type": "log_text",
+  "source_type": "dataset",
+  "source_name": "openstack_Nova_Test_1_round_1",
+  "content": {
+    "log_dir": "/path/to/logs",
+    "case_id": "openstack_Nova_Test_1",
+    "run_id": "openstack_Nova_Test_1_round_1",
+    "stats": {
+      "total_lines": 10000,
+      "parsed_lines": 8500,
+      "error_lines": 150
+    }
+  },
+  "meta": {
+    "system_id": "openstack",
+    "subsystem": "Nova",
+    "round_no": 1,
+    "is_fault": true
+  },
+  "created_at": ISODate("2024-01-01T12:00:00Z")
+}
+```
+
+---
+
+### 3. log_windows (日志窗口集合)
+**用途**: 存储聚合的日志窗口
+
+**文档结构**:
+```javascript
+{
+  "_id": "openstack_Nova_Test_1_round_1_w_a1b2c3d4",
+  "window_id": "openstack_Nova_Test_1_round_1_w_a1b2c3d4",
+  "task_id": "task::openstack_Nova_Test_1_round_1",
+  "strategy": "error",
+  
+  "run_id": "openstack_Nova_Test_1_round_1",
+  "case_id": "openstack_Nova_Test_1",
+  "system_id": "openstack",
+  "subsystem": "Nova",
+  "test_name": "Test_1",
+  "round_no": 1,
+  "is_fault": true,
+  
+  // 新增：故障标签字段（从 MySQL diagnosis_results 或 cases 表读取）
+  "fault_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+  "root_cause": "nova/volume/api.py:123",
+  "root_cause_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+  
+  "start_time": ISODate("2024-01-01T10:04:30Z"),
+  "end_time": ISODate("2024-01-01T10:05:30Z"),
+  "anchor_time": ISODate("2024-01-01T10:05:00Z"),
+  
+  "text": "2024-01-01T10:04:30 INFO nova.compute Starting instance...\n2024-01-01T10:05:00 ERROR nova.compute Failed to spawn instance\n...",
+  
+  "key_events": [
+    {
+      "timestamp": ISODate("2024-01-01T10:05:00Z"),
+      "level": "ERROR",
+      "module": "nova.compute",
+      "message": "Failed to spawn instance",
+      "line_no": 150,
+      "file_path": "/path/to/log/file.log"
+    }
+  ],
+  
+  "stats": {
+    "n_entries": 50,
+    "level_distribution": {
+      "INFO": 40,
+      "ERROR": 10
+    },
+    "top_modules": [
+      {"module": "nova.compute", "count": 30},
+      {"module": "nova.api", "count": 20}
+    ],
+    "strategy": "error",
+    "error_events": 10
+  },
+  
+  // 新增：metadata 子字段，便于后续检索/向量库统一取值
+  "metadata": {
+    "fault_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+    "root_cause": "nova/volume/api.py:123",
+    "root_cause_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+    "task_id": "task::openstack_Nova_Test_1_round_1",
+    "case_id": "openstack_Nova_Test_1",
+    "run_id": "openstack_Nova_Test_1_round_1",
+    "system_id": "openstack",
+    "subsystem": "Nova",
+    "is_fault": true
+  },
+  
+  "built_at": ISODate("2024-01-01T13:00:00Z")
+}
+```
+
+**索引**:
+- idx_windows_run_start: (run_id, start_time)
+- idx_windows_case: (case_id)
+- idx_windows_task: (task_id)
+
+---
+
+## FAISS 向量库文件
+
+### 输出文件结构
+```
+<out-dir>/
+├── faiss.index           # FAISS 索引文件
+├── metadata.jsonl       # 元数据文件（每行一个窗口的元信息）
+└── build_info.json      # 构建信息
+```
+
+### metadata.jsonl 格式
+```json
+{
+  "faiss_id": 0,
+  "window_id": "openstack_Nova_Test_1_round_1_w_a1b2c3d4",
+  "task_id": "task::openstack_Nova_Test_1_round_1",
+  "run_id": "openstack_Nova_Test_1_round_1",
+  "case_id": "openstack_Nova_Test_1",
+  "system_id": "openstack",
+  "subsystem": "Nova",
+  "round_no": 1,
+  "is_fault": true,
+  "strategy": "error",
+  "start_time": "2024-01-01T10:04:30Z",
+  "end_time": "2024-01-01T10:05:30Z",
+  "fault_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+  "root_cause": "nova/volume/api.py:123",
+  "root_cause_type": "OPENSTACK_WRONG_RETURN_VALUE-VOLUME",
+  "text": "2024-01-01T10:04:30 INFO nova.compute Starting instance...\n..."
+}
+```
+
+### build_info.json 格式
+```json
+{
+  "built_at": "2024-01-01T14:00:00Z",
+  "model_name": "all-MiniLM-L6-v2",
+  "model_path": "/models/all-MiniLM-L6-v2",
+  "dim": 384,
+  "total_vectors": 10000,
+  "metric": "cosine_via_inner_product",
+  "index_type": "IndexFlatIP",
+  "query": {},
+  "label_stats": {
+    "fault_type_non_null": 8500,
+    "root_cause_non_null": 8200,
+    "root_cause_type_non_null": 8500
+  },
+  "files": {
+    "index": "/path/to/faiss.index",
+    "metadata": "/path/to/metadata.jsonl"
+  }
+}
+```
+
+---
+
+## 知识图谱导出文件
+
+### 输出文件结构
+```
+<out-dir>/
+├── kg_nodes.jsonl       # 节点文件（每行一个节点）
+├── kg_edges.jsonl       # 边文件（每行一条边）
+└── kg_summary.json       # 摘要信息
+```
+
+### kg_nodes.jsonl 格式
+```json
+{
+  "id": "System::openstack",
+  "type": "System",
+  "properties": {
+    "system_id": "openstack",
+    "name": "OpenStack",
+    "code": "openstack"
+  }
+}
+```
+
+**节点类型**:
+- `System`: 系统
+- `Subsystem`: 子系统
+- `Component`: 组件
+- `Case`: 测试用例
+- `Run`: 运行轮次
+- `Task`: 诊断任务
+- `FaultType`: 故障类型
+- `RootCause`: 根因
+- `LogWindow`: 日志窗口
+
+### kg_edges.jsonl 格式
+```json
+{
+  "source": "System::openstack",
+  "relation": "HAS_SUBSYSTEM",
+  "target": "Subsystem::1"
+}
+```
+
+**边类型**:
+- `HAS_SUBSYSTEM`: System → Subsystem
+- `HAS_COMPONENT`: Subsystem → Component
+- `HAS_CASE`: Subsystem → Case
+- `HAS_RUN`: Case → Run
+- `HAS_TASK`: Run → Task
+- `HAS_RESULT_FAULT`: Task → FaultType
+- `HAS_ROOT_CAUSE`: Task → RootCause
+- `TARGETS_COMPONENT`: Case/Task → Component
+- `HAS_WINDOW`: Run → LogWindow
+- `USES_WINDOW`: Task → LogWindow
+- `SUPPORTS_FAULT`: LogWindow → FaultType
+
+### kg_summary.json 格式
+```json
+{
+  "built_at": "2024-01-01T14:00:00Z",
+  "node_count": 5000,
+  "edge_count": 8000,
+  "node_types": {
+    "System": 1,
+    "Subsystem": 3,
+    "Component": 480,
+    "Case": 480,
+    "Run": 960,
+    "Task": 960,
+    "FaultType": 20,
+    "RootCause": 20,
+    "LogWindow": 10000
+  },
+  "edge_types": {
+    "HAS_SUBSYSTEM": 3,
+    "HAS_COMPONENT": 480,
+    "HAS_CASE": 480,
+    "HAS_RUN": 960,
+    "HAS_TASK": 960,
+    "HAS_RESULT_FAULT": 960,
+    "HAS_ROOT_CAUSE": 960,
+    "TARGETS_COMPONENT": 1440,
+    "HAS_WINDOW": 960,
+    "USES_WINDOW": 960,
+    "SUPPORTS_FAULT": 5000
+  }
+}
+```
+
+---
+
+## 数据层次结构
+
+```
+System (MySQL systems)
+  ↓
+Subsystem (MySQL subsystems)
+  ↓
+Component (MySQL components)
+  ↓
+Case (MySQL cases)
+  ↓
+Run (MySQL runs)
+  ↓
+Task (MySQL diagnosis_tasks)
+  ↓
+  ├─ Evidence (MongoDB evidence_inputs)
+  ├─ Log Entries (MongoDB log_entries)
+  ├─ Log Windows (MongoDB log_windows)
+  ├─ Embeddings (FAISS)
+  └─ Results (MySQL diagnosis_results)
+```
+
+---
+
+## 脚本执行顺序
+
+```bash
+# 1. 初始化存储
+python3 00_init_storage.py
+
+# 2. 扫描数据集
+python3 01_scan_dataset.py --dataset-root data/dataset --out artifacts/manifest.jsonl --system openstack --include-system-in-ids
+
+# 3. 解析故障注入信息
+python3 02_parse_fip_info_to_mysql.py --manifest artifacts/manifest.jsonl
+
+# 4. 导入日志
+python3 03_ingest_logs_to_mongo_v2.py --manifest artifacts/manifest.jsonl
+
+# 5. 构建日志窗口
+python3 04_build_log_windows_v2.py --strategy error
+
+# 6. 构建向量索引
+python3 05_build_vector_index_faiss.py --model-path /models/all-MiniLM-L6-v2 --out-dir artifacts/vector_store
+
+# 7. 构建知识图谱
+python3 06_build_knowledge_graph.py --out-dir artifacts/kg
+```
+
+---
+
+## 数据量估算
+
+ OpenStack 数据集（480 个测试，每个测试 2 个轮次）：
+
+| 数据类型 | 预估数量 | 说明 |
+|---------|---------|------|
+| MySQL systems | 1 | openstack |
+| MySQL subsystems | 3 | Nova, Cinder, Neutron |
+| MySQL components | ~480 | 每个测试的目标组件 |
+| MySQL cases | 480 | Nova(231) + Cinder(125) + Neutron(124) |
+| MySQL runs | 960 | 每个 case 2 个轮次 |
+| MySQL diagnosis_tasks | 960 | 每个 run 一个任务 |
+| MySQL diagnosis_results | 960 | 黄金结果 |
+| MongoDB log_entries | 数百万 | 取决于日志量 |
+| MongoDB log_windows | 数万 | 取决于窗口策略 |
+| FAISS vectors | 数万 | 与 log_windows 一一对应 |
+| KG nodes | ~1.3万 | 包含所有实体 |
+| KG edges | ~1.2万 | 包含所有关系 |
+
+
+
+## 环境变量
+
+```bash
+# MySQL
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=secret
+MYSQL_DB=fault_diagnosis
+MYSQL_CHARSET=utf8mb4
+
+# MongoDB
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB=fault_diagnosis
+```
+
+---
+
+## 依赖包
+
+```bash
+pip install pymysql pymongo python-dateutil sentence-transformers torch faiss-cpu
+```
+
+

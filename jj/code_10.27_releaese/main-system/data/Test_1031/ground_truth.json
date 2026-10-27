@@ -1,0 +1,66 @@
+{
+  "version": "v3",
+  "sample_class": "fault",
+  "fault_type": "QUEUE_CONSUMER_STALL_MISSING_WAKEUP",
+  "domain": "TASK",
+  "source_session_id": "nuttx_queue_consumer_stall_missing_wakeup_p2w_a_r001",
+  "fault_point": "nuttx_queue_consumer_stall_missing_wakeup_p2w_a_r001",
+  "root_cause_text": "等待方依赖的唤醒信号缺失或丢失，导致消费者或工作线程长期阻塞。",
+  "root_cause_mechanism": "missing_wakeup_or_signal_delivery",
+  "root_cause_evidence": [
+    {
+      "stage": "trigger",
+      "timestamp": "2026-01-01T00:00:01.180Z",
+      "module": "msgq",
+      "level": "WARN",
+      "message": "queue depth nonzero while consumer remained blocked fault_family=task_coordination severity=high phase=runtime stage=trigger queue_depth=7",
+      "component": "nuttx/msgq",
+      "function_def": "src/ipc/msgq_dispatch.c+118; 1"
+    },
+    {
+      "stage": "propagation",
+      "timestamp": "2026-01-01T00:00:01.300Z",
+      "module": "healthmon",
+      "level": "WARN",
+      "message": "backlog escalation entered queue stall handling path fault_family=task_coordination severity=high phase=runtime stage=propagation",
+      "component": "nuttx/healthmon",
+      "function_def": "apps/system/healthmon/queue_health.c+66; 1"
+    },
+    {
+      "stage": "impact",
+      "timestamp": "2026-01-01T00:00:01.240Z",
+      "module": "telemetry_task",
+      "level": "ERROR",
+      "message": "consumer wakeup not observed after producer enqueue fault_family=task_coordination severity=critical phase=runtime stage=impact blocked_ms=210",
+      "component": "nuttx/telemetry_task",
+      "function_def": "src/comms/telemetry_task.c+204; 1"
+    },
+    {
+      "stage": "recovery",
+      "timestamp": "2026-01-01T00:00:04.700Z",
+      "module": "recovery_mgr",
+      "level": "WARN",
+      "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+    }
+  ],
+  "injection": {
+    "component": "nuttx/msgq",
+    "function_def": "src/ipc/msgq_dispatch.c+118; 1"
+  },
+  "propagation": [
+    {
+      "component": "nuttx/healthmon",
+      "function_def": "apps/system/healthmon/queue_health.c+66; 1"
+    }
+  ],
+  "impact": {
+    "component": "nuttx/telemetry_task",
+    "function_def": "src/comms/telemetry_task.c+204; 1"
+  },
+  "recovery": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+  }
+}

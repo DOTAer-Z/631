@@ -1,0 +1,89 @@
+# =============================================================================
+# 故障诊断平台 —— 生产/部署编排（PostgreSQL 单库 + 后端 + 前端）
+#
+# 一键启动：
+#   cd deploy && docker compose -f docker-compose.prod.yaml up -d --build
+# 访问：
+#   前端    http://<host>:8080/
+#   API/Swagger  http://<host>:5000/api/docs
+#   健康检查  http://<host>:5000/health
+# =============================================================================
+name: faultdiag
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: faultdiag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fault_diagnosis}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - faultdiag
+
+  backend:
+    image: faultdiag-backend:latest
+    container_name: faultdiag-backend
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-fault_diagnosis}
+      MONGO_DB: ${POSTGRES_DB:-fault_diagnosis}
+      # ── 本地 Embedding（bge-small-zh-v1.5 已打包进镜像）默认启用 ──
+      ENABLE_EMBEDDING: "True"
+      LOCAL_MODEL_PATH: "/models/bge-small-zh-v1.5"
+      EMBEDDING_DEVICE: "cpu"
+      # ── 大模型（接口已就绪，留空表示不启用真实推理）──
+      ENABLE_LLM: "False"
+      AUTO_INGEST: "1"
+      # ── 启用真实大模型时：把 ENABLE_LLM 改为 "True"，并取消下面三项注释 ──
+      # LLM_BASE_URL: "http://172.30.4.43:8001/v1"
+      # LLM_MODEL: "dsqwen32b"
+      # LLM_API_KEY: "dummy"
+      # LLM_MAX_OUTPUT_TOKENS: "1024"
+      # ── 远程 Embedding（OpenAI 兼容服务）：本地已开启则无需配置；要走远程则填这三项 ──
+      # EMBEDDING_API_BASE: "http://<embedding-host>:<port>/v1"
+      # EMBEDDING_MODEL: "bge-m3"
+      # EMBEDDING_API_KEY: "dummy"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:8000"
+    networks:
+      - faultdiag
+
+  frontend:
+    image: faultdiag-frontend:latest
+    container_name: faultdiag-frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    networks:
+      - faultdiag
+
+volumes:
+  pgdata:
+
+networks:
+  faultdiag:
+    driver: bridge

@@ -1,0 +1,66 @@
+{
+  "version": "v3",
+  "sample_class": "fault",
+  "fault_type": "WORKER_POOL_EXHAUSTION_UNBOUNDED_RETRY",
+  "domain": "TASK",
+  "source_session_id": "nuttx_worker_pool_exhaustion_unbounded_retry_p2w_a_r001",
+  "fault_point": "nuttx_worker_pool_exhaustion_unbounded_retry_p2w_a_r001",
+  "root_cause_text": "异常路径持续重试而不释放资源，导致工作队列、内存或工作线程逐步耗尽。",
+  "root_cause_mechanism": "resource_exhaustion_unbounded_retry",
+  "root_cause_evidence": [
+    {
+      "stage": "trigger",
+      "timestamp": "2026-01-01T00:00:01.190Z",
+      "module": "hpwork",
+      "level": "WARN",
+      "message": "retry task resubmitted without backoff guard fault_family=task_coordination severity=high phase=runtime stage=trigger queue_depth=18",
+      "component": "nuttx/hpwork",
+      "function_def": "kernel/work_queue.c+319; 1"
+    },
+    {
+      "stage": "propagation",
+      "timestamp": "2026-01-01T00:00:01.320Z",
+      "module": "mission_mgr",
+      "level": "WARN",
+      "message": "deferred job latency exceeded mission budget after retry storm fault_family=task_coordination severity=high phase=runtime stage=propagation",
+      "component": "nuttx/mission_mgr",
+      "function_def": "src/mission/mission_mgr.c+130; 1"
+    },
+    {
+      "stage": "impact",
+      "timestamp": "2026-01-01T00:00:01.250Z",
+      "module": "recovery_mgr",
+      "level": "ERROR",
+      "message": "worker pool exhausted before fault handler dispatch fault_family=task_coordination severity=critical phase=runtime stage=impact available_workers=0",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/system/recovery/recovery_mgr.c+138; 1"
+    },
+    {
+      "stage": "recovery",
+      "timestamp": "2026-01-01T00:00:04.700Z",
+      "module": "recovery_mgr",
+      "level": "WARN",
+      "message": "entering degraded mode phase=runtime stage=recovery policy=drop_noncritical_work",
+      "component": "nuttx/recovery_mgr",
+      "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+    }
+  ],
+  "injection": {
+    "component": "nuttx/hpwork",
+    "function_def": "kernel/work_queue.c+319; 1"
+  },
+  "propagation": [
+    {
+      "component": "nuttx/mission_mgr",
+      "function_def": "src/mission/mission_mgr.c+130; 1"
+    }
+  ],
+  "impact": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/system/recovery/recovery_mgr.c+138; 1"
+  },
+  "recovery": {
+    "component": "nuttx/recovery_mgr",
+    "function_def": "apps/examples/faultlog/faultlog_main.c+46; 1"
+  }
+}

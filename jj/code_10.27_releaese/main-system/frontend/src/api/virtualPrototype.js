@@ -1,0 +1,20 @@
+import request from './index'
+
+export const getVirtualPrototypeHealth = () => request.get('/virtual-prototype/health')
+export const getVirtualPrototypeCapabilities = () => request.get('/virtual-prototype/capabilities')
+const liveTaskRequest = { headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' } }
+export const listVirtualPrototypeJobs = (params = {}) => request.get('/virtual-prototype/jobs', { ...liveTaskRequest, params })
+export const listVirtualPrototypeSamples = () => request.get('/virtual-prototype/samples')
+export const previewVirtualPrototypeSample = (sampleId) => request.get(`/virtual-prototype/samples/${sampleId}/preview`)
+export const reproduceVirtualPrototypeSample = (sampleId, data) => request.post(`/virtual-prototype/samples/${sampleId}/reproduce`, data)
+export const createVirtualPrototypeJob = (data) => request.post('/virtual-prototype/jobs', data)
+export const getVirtualPrototypeJob = (jobId) => request.get(`/virtual-prototype/jobs/${jobId}`, liveTaskRequest)
+export const getVirtualPrototypeEvents = (jobId) => request.get(`/virtual-prototype/jobs/${jobId}/events`, liveTaskRequest)
+export const getVirtualPrototypeCheckpoints = (jobId) => request.get(`/virtual-prototype/jobs/${jobId}/checkpoints`)
+export const replayVirtualPrototypeJob = (jobId, data = {}) => request.post(`/virtual-prototype/jobs/${jobId}/replay`, data)
+export const cancelVirtualPrototypeJob = (jobId) => request.post(`/virtual-prototype/jobs/${jobId}/cancel`)
+export const downloadVirtualPrototypeArtifact = (jobId) => request.get(`/virtual-prototype/jobs/${jobId}/artifact`, { responseType: 'blob' })
+export const listVirtualPrototypeImports = () => request.get('/virtual-prototype/artifact-imports')
+export const saveVirtualPrototypeArtifact = (jobId) => request.post(`/virtual-prototype/jobs/${jobId}/database-import`)
+export const getExpansionAnalysis = (params = {}) => request.get('/virtual-prototype/analysis', { params })
+export const startExpansionAnalysis = () => request.post('/virtual-prototype/analysis')

@@ -1,0 +1,44 @@
+services:
+  backend:
+    container_name: faultdiag-backend-v3
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    ports:
+      - "5000:8000"
+
+    env_file:
+      - ../.env
+
+    networks:
+      - faultdiag_net_v3
+
+    volumes:
+      - /home/yenan/projects/fault/outputs/vector_store:/app/outputs/vector_store:ro
+      - /home/yenan/projects/fault/outputs/kg:/app/outputs/kg:ro
+      - /home/yenan/projects/volume/models/all-MiniLM-L6-v2:/app/models/all-MiniLM-L6-v2:ro
+      - /home/yenan/projects/fault/data/imports:/app/data/imports
+
+  frontend:
+    container_name: faultdiag-frontend-v3
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    ports:
+      - "8080:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - faultdiag_net_v3
+
+networks:
+  faultdiag_net_v3:
+    external: true

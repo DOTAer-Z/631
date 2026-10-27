@@ -1,0 +1,5 @@
+{
+  "sample_class": "fault",
+  "domain": "nuttx",
+  "fault_type": "watchdog_timeout"
+}

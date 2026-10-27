@@ -1,0 +1,37 @@
+# 前端：Deployment + Service（NodePort 对外暴露 UI）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faultdiag-frontend
+  namespace: faultdiagnosis
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: faultdiag-frontend }
+  template:
+    metadata:
+      labels: { app: faultdiag-frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: easzlab.io.local:5000/faultdiag-frontend:release-2026-06-06   # ← 改成你的仓库/标签
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faultdiag-frontend
+  namespace: faultdiagnosis
+spec:
+  type: NodePort
+  selector: { app: faultdiag-frontend }
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080            # 访问 http://<任意节点IP>:30080/

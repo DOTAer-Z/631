@@ -1,0 +1,133 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+import { FAULT_LABELS } from '../src/utils/localFaultFile.mjs'
+
+const router = readFileSync(new URL('../src/router/index.js', import.meta.url), 'utf8')
+const expansion = readFileSync(new URL('../src/views/KeyTechnologyDemo/DataExpansion.vue', import.meta.url), 'utf8')
+const replay = readFileSync(new URL('../src/views/KeyTechnologyDemo/AcceleratedReplay.vue', import.meta.url), 'utf8')
+
+test('数据增广与快速复现提供增广样本和加速复现两个入口', () => {
+  assert.match(router, /title: '数据增广与快速复现'/)
+  assert.match(router, /title: '增广数据样本'/)
+  assert.match(router, /title: '加速故障复现'/)
+  assert.doesNotMatch(router, /title: '虚拟样机'/)
+})
+
+test('大模型分析位于生成和最近任务之间且不依赖 Agent 在线', () => {
+  const start = expansion.indexOf('<section class="analysis-section">')
+  assert.ok(start > expansion.indexOf('>故障数据生成<'))
+  assert.ok(start < expansion.indexOf('最近任务 · 手动保存产物'))
+  assert.match(expansion, /:disabled="analysisBusy \|\| !analysis\?\.pending"/)
+  assert.match(expansion, /refreshAnalysis\(\); load\(\)/)
+  assert.match(expansion, /模型调用费用/)
+})
+
+test('分析区域只展示逐文件结果和全量正确率', () => {
+  assert.doesNotMatch(expansion, /analysis-counts|诊断覆盖率|各故障类型统计|十类故障正确率|正常基线识别正确率/)
+  assert.doesNotMatch(expansion, /analysis\?\.groups|analysis\?\.per_type/)
+  assert.match(expansion, />逐文件诊断结果</)
+  assert.match(expansion, /诊断正确率：/)
+  assert.match(expansion, /analysis\?\.overall\?\.accuracy/)
+  assert.doesNotMatch(expansion, /ground_truth 辅助|ground_truth 参考/)
+  assert.match(expansion, /diagnosisModeLabel\(row.diagnosis_mode\)/)
+  assert.doesNotMatch(expansion, /ground_truth_reference/)
+})
+
+test('数据扩充固定展示十类中文故障且只提供故障数据生成', () => {
+  assert.equal(Object.keys(FAULT_LABELS).length, 10)
+  assert.equal(FAULT_LABELS.F2301, '虚拟资源或隔离异常(CPU 配额限流)')
+  assert.equal(FAULT_LABELS.F5203, '应用逻辑/状态机异常(监听端口数量异常增长)')
+  assert.equal(FAULT_LABELS.F5402, '功能时序与性能退化异常(已建立 TCP 连接数量异常增长)')
+  assert.doesNotMatch(expansion, /F5201.*Java 进程数异常膨胀/)
+  assert.match(expansion, /Object.entries\(FAULT_LABELS\)/)
+  assert.match(expansion, />故障数据生成</)
+  assert.doesNotMatch(expansion, />正常生成</)
+  assert.doesNotMatch(expansion, />加速生成</)
+  assert.match(expansion, /task_kind: 'augmentation'/)
+  assert.match(expansion, /sample_count: 15/)
+  assert.match(expansion, /label="注入生成" value="native"/)
+  assert.match(expansion, /label="算法生成" value="local_file"/)
+  assert.doesNotMatch(expansion, /受控替代生成|模拟证据生成/)
+  assert.doesNotMatch(expansion, /<el-table-column[^>]+label="生成方式"/)
+  assert.doesNotMatch(expansion, /请先明确选择生成方式/)
+  assert.match(expansion, /readLocalFaultFile/)
+  assert.match(expansion, /submitGeneration\(localFileFault\.value\.row\)/)
+  assert.match(expansion, /label="实际故障"/)
+  assert.match(expansion, /function jobFaultType\(job\) \{ return executedFaultType\(job\) \|\| requestedFaultType\(job\) \}/)
+  assert.doesNotMatch(expansion, /Agent 离线：仍可选择和读取本地文件/)
+  assert.doesNotMatch(expansion, /故障动作只在 Euler 虚拟机内执行/)
+  assert.doesNotMatch(expansion, /大类\(小类\).*超过 256 KiB/)
+  assert.match(expansion, /euler-expansion-latest-jobs/)
+  assert.match(expansion, /rememberSubmitted\(row\.code, result\.job_id\)/)
+  assert.match(expansion, /submittedJobs\.value = \{ \.\.\.submittedJobs\.value, \[result\.job_id\]: \{/)
+  assert.match(expansion, /Resolve the remembered submission by ID before filtering by fault type/)
+  assert.match(expansion, /const remembered = rememberedId\s*\?\s*knownJobs\.value\.find\(job => job\.job_id === rememberedId\)/)
+  assert.match(expansion, /const latest = rememberedId\s*\?\s*\(remembered \|\| \{ job_id: rememberedId \}\) : newest/)
+  assert.match(expansion, /const completed = hasArtifact\(latest\) \? latest : undefined/)
+  assert.match(expansion, /knownJobs\.value\.some\(job => isActiveJob\(job\.status\)\)/)
+  assert.match(expansion, /getVirtualPrototypeJob\(id\)[\s\S]*submittedJobs\.value = \{ \.\.\.submittedJobs\.value, \[id\]: job \}/)
+  assert.match(expansion, /async function view\(id\)[\s\S]*?drawerJobId\.value = id[\s\S]*?await refreshDrawer\(id, \{ notify: true \}\)/)
+  assert.match(expansion, /async function refreshDrawer\(id = drawerJobId\.value[\s\S]*?getVirtualPrototypeJob\(id\)[\s\S]*?getVirtualPrototypeEvents\(id\)/)
+  assert.match(expansion, /requestedFaultType\(job\)/)
+  assert.match(expansion, /knownJobs\.value\.some\(job => isActiveJob\(job\.status\)\)/)
+  assert.match(expansion, /query: \{ data_category: 'semi', task_id: id \}/)
+  assert.doesNotMatch(expansion, /run_ids\?\.\[0\]/)
+})
+
+test('Euler job polling explicitly bypasses HTTP caches', () => {
+  const api = readFileSync(new URL('../src/api/virtualPrototype.js', import.meta.url), 'utf8')
+  assert.match(api, /Cache-Control': 'no-cache, no-store'/)
+  assert.match(api, /listVirtualPrototypeJobs[\s\S]*liveTaskRequest/)
+  assert.match(api, /getVirtualPrototypeJob[\s\S]*liveTaskRequest/)
+  assert.match(api, /getVirtualPrototypeEvents[\s\S]*liveTaskRequest/)
+})
+
+test('加速复现使用明确的模拟 checkpoint 模式并展示实测指标', () => {
+  assert.match(replay, /execution_mode:'checkpoint_demo'/)
+  assert.match(replay, /evidence_mode:'simulated'/)
+  assert.match(replay, /normal_wall_duration_seconds/)
+  assert.match(replay, /measured_speedup/)
+  assert.match(replay, /sample_count:1/)
+  assert.match(replay, /checkpoint-demo-latest/)
+  assert.match(replay, /rememberReplay\(s\.sample_id,x\.job_id,mode\)/)
+  assert.match(replay, /await view\(x\.job_id\)/)
+  assert.match(replay, /Promise\.all\(\[getVirtualPrototypeJob\(id\),getVirtualPrototypeEvents\(id\)\]\)/)
+  assert.match(replay, /setInterval\(\(\)=>\{if\(taskDrawer\.value\)loadTask\(id\)/)
+})
+
+test('virtual prototype uses the entire job to check downloadable artifacts', () => {
+  const virtualPrototype = readFileSync(new URL('../src/views/VirtualPrototype/index.vue', import.meta.url), 'utf8')
+  assert.match(virtualPrototype, /jobs\.value\.filter\(\(job\) => requestedFaultType\(job\) === item\.code\)/)
+  assert.match(virtualPrototype, /function isCompleted\(job\) \{ return hasDownloadableArtifact\(job\) \}/)
+  assert.match(virtualPrototype, /:disabled="!isCompleted\(row\)"/)
+  assert.doesNotMatch(virtualPrototype, /isCompleted\([^)]*\.status\)/)
+})
+
+test('加速故障复现移除页头的两行说明文字', () => {
+  assert.doesNotMatch(replay, /本页面为模拟演示：复现结果标记为 simulated，未执行真实故障注入。/)
+  assert.doesNotMatch(replay, /三个 NuttX 展示样例的 Euler 模拟 checkpoint 复现/)
+  assert.doesNotMatch(replay, /NuttX 展示 → Euler/)
+  assert.doesNotMatch(replay, /\{\{s\.sample_id\}\}/)
+  assert.match(replay, /\{\{s\.title\}\}/)
+  assert.match(replay, /class="title">加速故障复现</)
+})
+
+test('查看样例使用本地目录，不依赖 Agent 在线', () => {
+  assert.match(replay, /eulerSamplePreviews\.json/)
+  assert.match(replay, /:disabled="busy" @click="preview\(s\)"/)
+  assert.match(replay, /localPreviews\[s\.sample_id\]/)
+  assert.doesNotMatch(replay, /previewVirtualPrototypeSample/)
+  assert.match(replay, /title="样例预览"/)
+  assert.doesNotMatch(replay, /title="NuttX 样例预览"/)
+})
+
+test('任务详情隐藏指定的替代和倍率字段', () => {
+  assert.doesNotMatch(replay, /证据类型/)
+  assert.doesNotMatch(replay, /是否执行故障注入/)
+  assert.doesNotMatch(expansion, /label="替代原因"/)
+  assert.doesNotMatch(replay, /label="(?:目标倍率|实际倍率|达到目标)"/)
+  assert.match(replay, /正常耗时/)
+  assert.match(replay, /复现耗时/)
+  assert.match(replay, /实测倍率/)
+})
